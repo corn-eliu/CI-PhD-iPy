@@ -94,9 +94,9 @@ def fitLine2D(points) :
     p2 = np.array([-x[2]/x[0], 0])
     ###############################
     
-    n = (p1-p2) / np.linalg.norm(p1-p2)
+    u = (p1-p2) / np.linalg.norm(p1-p2)
     
-    return np.array(np.hstack((n, p1)), dtype=float)
+    return np.array(np.hstack((u, p1)), dtype=float)
 
 def fitLine3D(points) :
     if(points.shape[1]!=3):
