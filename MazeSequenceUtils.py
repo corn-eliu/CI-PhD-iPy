@@ -195,6 +195,6 @@ def getDistanceMatrix(location, frames) :
             sys.stdout.flush() 
             
         ## save file
-        np.save(dataLoc+"distanceMatrix")
+        np.save(dataLoc+"distanceMatrix", distanceMatrix)
     return distanceMatrix
 
