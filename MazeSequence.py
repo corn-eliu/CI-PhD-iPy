@@ -582,7 +582,7 @@ for line in lines :
 
 for i in xrange(0, len(cameraLocs2D), 10) :
     rotation = msu.qToR(cameras[i, 0:4]).T # take transpose of result of qToR
-    ## HACK for the computation of trasf
+    ## HACK for the computation of transf
     transf = np.hstack([np.array(np.vstack([rotation, np.zeros(3)])), np.array(([cameraLocs2D[i, 0]], [0], [cameraLocs2D[i, 1]], [1]))]) # 4x4 transformation matrix
     tmp = np.dot(transf, ([0.0], [0.0],[0.5],[1.0]))
     tmp = tmp[0:3, 0]

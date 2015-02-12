@@ -6,13 +6,10 @@
 ## Imports and defines
 import numpy as np
 import scipy as sp
+from scipy import special
 import cv2
-import glob
-import time
 import sys
-import os
 from scipy import ndimage
-from scipy import stats
 
 dataFolder = "data/"
 
@@ -72,6 +69,18 @@ def dist2prob(dM, sigmaMult, normalize) :
         pM = pM / normTerm
     return pM
 
+## Turn distances with extra range constraint to probabilities
+def rangedist2prob(dM, sigmaMult, rangeDist, normalize) :
+    sigma = sigmaMult*np.mean(dM[np.nonzero(dM)])
+    print 'sigma', sigma
+    pM = np.exp(-(dM/sigma+ rangeDist))
+## normalize probabilities row-wise
+    if normalize :
+        normTerm = np.sum(pM, axis=1)
+        normTerm = cv2.repeat(normTerm, 1, dM.shape[1])
+        pM = pM / normTerm
+    return pM
+
 # <codecell>
 
 ## get a random frame based on given probabilities
@@ -81,7 +90,7 @@ def randFrame(probs) :
 #     print 'sortedProbs', sortedProbs
 #     print np.int(probs.shape[0]/10)
     sortedProbs = sortedProbs[0:5]#np.int(probs.shape[0]/10)] # get highest 10%
-#     sortedProbs = sortedProbs[0]
+#     sortedProbs = sortedProbs[0]f
 #     print 'sortedProbs', sortedProbs
     sortedProbs = sortedProbs/np.sum(sortedProbs) # normalize
 #     print 'sortedProbs', sortedProbs
@@ -99,21 +108,20 @@ def randFrame(probs) :
 def doAlphaBlend(pairs, weights, movie) :
     blended = np.zeros(np.hstack((movie.shape[0:-1], len(pairs))), dtype=np.uint8)
     for pair, w, idx in zip(pairs, weights, xrange(0, len(pairs))) :
-#         print pair, idx, w
         if pair[0] != pair[1] :
-            blended[:, :, :, idx] = movie[:, :, :, pair[0]]*w+movie[:, :, :, pair[1]]*(1.0-w)
+            blended[:, :, :, idx] = movie[:, :, :, pair[0]]*w + movie[:, :, :, pair[1]]*(1.0-w)
     return blended
 
 # <codecell>
 
 ## compute distance between each pair of images
-def computeDistanceMatrix(movie, outputData) :
+def computeDistanceMatrix(movie, savedDistMat) :
     try :
         ## load distanceMatrix from file
-        distanceMatrix = np.load(outputData+"_distanceMatrix.npy")
-        print "loaded distance matrix from ", outputData, "_distanceMatrix.npy"
+        distanceMatrix = np.load(savedDistMat)
+        print "loaded distance matrix from ", savedDistMat
     except IOError :
-        print "computing distance matrix and saving to ", outputData, "_distanceMatrix.npy"
+        print "computing distance matrix and saving to ", savedDistMat
         distanceMatrix = np.zeros([movie.shape[3], movie.shape[3]])
         distanceMatrix = distEuc(np.reshape(movie/255.0, [np.prod(movie.shape[0:-1]), movie.shape[-1]]).T)
         # for i in range(0, movie.shape[3]) :
@@ -123,7 +131,7 @@ def computeDistanceMatrix(movie, outputData) :
         #     print (movie.shape[3]-i),
             
         ## save file
-        np.save(outputData+"_distanceMatrix", distanceMatrix)
+        np.save(savedDistMat, distanceMatrix)
     
     return distanceMatrix
 
@@ -137,7 +145,7 @@ def filterDistanceMatrix(distanceMatrix, numFilterFrames, isRepetitive) :
     if isRepetitive :
         kernel = np.eye(numFilterFrames*2+1)
     else :
-        coeff = sp.special.binom(numFilterFrames*2, range(0, numFilterFrames*2 +1)); print coeff
+        coeff = special.binom(numFilterFrames*2, range(0, numFilterFrames*2 +1)); print coeff
         kernel = diagkernel(coeff)
     # distanceMatrixFilt = cv2.filter2D(distanceMatrix, -1, kernel)
     distanceMatrixFilt = ndimage.filters.convolve(distanceMatrix, kernel, mode='constant')
@@ -180,9 +188,12 @@ def estimateFutureCost(alpha, p, distanceMatrixFilt) :
 
 # <codecell>
 
-def getProbabilities(distMat, sigmaMult, normalizeRows) :
+def getProbabilities(distMat, sigmaMult, rangeDist, normalizeRows) :
     ## compute probabilities from distanceMatrix and the cumulative probabilities
-    probabilities = dist2prob(distMat, sigmaMult, normalizeRows)
+    if rangeDist == None :
+        probabilities = dist2prob(distMat, sigmaMult, normalizeRows)
+    else :
+        probabilities = rangedist2prob(distMat, sigmaMult, rangeDist, normalizeRows)
     # since the probabilities are normalized on each row, the right most column will be all ones
     cumProb = np.cumsum(probabilities, axis=1)
     print probabilities.shape, cumProb.shape
@@ -192,7 +203,7 @@ def getProbabilities(distMat, sigmaMult, normalizeRows) :
 # <codecell>
 
 ## Find a sequence of frames based on final probabilities
-def getFinalFrames(cumProb, totalFrames, correction, startFrame, loopTexture) :
+def getFinalFrames(cumProb, totalFrames, correction, startFrame, loopTexture, verbose) :
     # totalFrames = 1000
     finalFrames = []
     
@@ -201,33 +212,42 @@ def getFinalFrames(cumProb, totalFrames, correction, startFrame, loopTexture) :
     
     
     currentFrame = startFrame#np.ceil(np.random.rand()*(cumProb.shape[0]-1))
-    print currentFrame
     # currentFrame = 400
-    print 'starting at frame', currentFrame+correction
+    if verbose :
+        print 'starting at frame', currentFrame+correction
     finalFrames.append(currentFrame)
     for i in range(1, totalFrames) :
     #     currentFrame = randFrame(probabilities[currentFrame, :])
-        prob = np.random.rand(1)
-        currentFrame = np.round(np.sum(cumProb[currentFrame, :] < prob))
-        finalFrames.append(currentFrame)
-        print 'frame', i, 'of', totalFrames, 'taken from frame', currentFrame+correction, prob
+        finalFrames.append(getNewFrame(finalFrames[-1], cumProb))
+        if verbose :
+            print 'frame', i, 'of', totalFrames, 'taken from frame', finalFrames[-1]+correction #, prob
     
     if loopTexture and len(finalFrames) > 1 :
         ## add more random frames if necessary
         while finalFrames[-1] > finalFrames[0] :
-            prob = np.random.rand(1)
-            currentFrame = np.round(np.sum(cumProb[currentFrame, :] < prob))
-            finalFrames.append(currentFrame)
-            print 'additional frame', len(finalFrames)-totalFrames, 'taken from frame', currentFrame+correction, prob
+            finalFrames.append(getNewFrame(finalFrames[-1], cumProb))
+            if verbose :
+                print 'additional frame', len(finalFrames)-totalFrames, 'taken from frame', finalFrames[-1]+correction#, prob
         ## add the remaining needed frames
         if finalFrames[-1] != finalFrames[0] :
-            finalFrames = np.concatenate((finalFrames, list(np.arange(finalFrames[-1], finalFrames[0]))))
-            print 'total additional frames', finalFrames[totalFrames:len(finalFrames)]
+            finalFrames = np.concatenate((finalFrames, list(np.arange(finalFrames[-1]+1, finalFrames[0]))))
+            
+            if verbose :
+                print 'total additional frames', len(finalFrames[totalFrames:len(finalFrames)])
+                print finalFrames[totalFrames:len(finalFrames)]
             
     
     finalFrames = np.array(finalFrames)
     finalFrames = finalFrames+correction
     return finalFrames
+
+def getNewFrame(currentFrame, cumProb) :
+    newFrame = np.copy(currentFrame)
+    while np.abs(newFrame-currentFrame) < 10 and newFrame-currentFrame != 1 :
+        prob = np.random.rand(1)
+        newFrame = np.round(np.sum(cumProb[currentFrame, :] < prob))
+#         print "tralal", newFrame, currentFrame, np.abs(newFrame-currentFrame) < 10, newFrame-currentFrame != 1
+    return newFrame
 
 # <codecell>
 
@@ -249,7 +269,7 @@ def renderFinalFrames(movie, finalFrames, numInterpolationFrames) :
         else :
             cycleLengh = 1
             jump += 1
-            print "jump", jump, "from frame", finalFrames[f-1], "to frame", finalFrames[f]
+#             print "jump", jump, "from frame", finalFrames[f-1], "to frame", finalFrames[f]
             finalJumps.append(f)
             
             if numInterpolationFrames < 1 :
@@ -271,7 +291,7 @@ def renderFinalFrames(movie, finalFrames, numInterpolationFrames) :
                 
             ## do alpha blending 
             blendWeights = np.arange(1.0-1.0/(numInterpolationFrames*2.0), 0.0, -1.0/((numInterpolationFrames+1)*2.0))
-            blended = doAlphaBlend(toInterpolate, blendWeights, movie)
+            blended = doAlphaBlend(np.array(toInterpolate, dtype=np.int), blendWeights, movie)
             frameIndices = xrange(f-numInterpolationFrames, f+numInterpolationFrames)
             # put blended frames into finalMovie
             for idx, b in zip(frameIndices, xrange(0, len(blended))) :
