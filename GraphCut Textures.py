@@ -9,6 +9,10 @@ import numpy as np
 import cv2
 import time
 # import graph_tool as gt
+from PIL import Image
+import scipy.io as sio
+import GraphWithValues as gwv
+import sys
 
 # <codecell>
 
@@ -28,10 +32,6 @@ print S_IDX, T_IDX, ST_COST, S_LABEL, T_LABEL, S_A_COLOR, S_B_COLOR, T_A_COLOR, 
 # inputImg = cv2.cvtColor(cv2.imread("graphcutTexturesInput.png"), cv2.COLOR_BGR2RGB)
 inputImg = cv2.cvtColor(cv2.imread("cashews.png"), cv2.COLOR_BGR2RGB)
 figure(); imshow(inputImg)
-
-# <codecell>
-
-print gridEdges1D.shape
 
 # <codecell>
 
@@ -289,14 +289,15 @@ def getGraphcutOnOverlap(patchA, patchB, patchAPixels, patchBPixels, oldCutEdges
     numNodes = h*width+numSeamNodes+2
     gm = opengm.gm(numpy.ones(numNodes,dtype=opengm.label_type)*numLabels)
 #     print "seam nodes", numSeamNodes
+    ## Last 2 nodes are patch A and B respectively
+    idxPatchANode = numNodes - 2
+    idxPatchBNode = numNodes - 1
     
+        
     ## get unary functions
     unaries = np.zeros((numNodes,numLabels))
     
-    ## Last 2 nodes are patch A and B respectively
     ## fix label for nodes representing patch A and B to have label 0 and 1 respectively
-    idxPatchANode = numNodes - 2
-    idxPatchBNode = numNodes - 1
 #     print "patches idxs", idxPatchANode, idxPatchBNode
     unaries[idxPatchANode, :] = [0.0, maxCost]
     unaries[idxPatchBNode, :] = [maxCost, 0.0]
@@ -320,7 +321,7 @@ def getGraphcutOnOverlap(patchA, patchB, patchAPixels, patchBPixels, oldCutEdges
         ## if current edge pixel pair has not been cut proceed as usual
         if not np.any(pairDiff) :
             pairwise[i] = norm(patchA[sPix[0], sPix[1], :] - patchB[sPix[0], sPix[1], :])
-            pairwise[i] += norm(patchA[tPix[0], tPix[1]] - patchB[tPix[0], tPix[1]])
+            pairwise[i] += norm(patchA[tPix[0], tPix[1], :] - patchB[tPix[0], tPix[1], :])
             
             fid = gm.addFunction(np.array([[0.0, pairwise[i]],[pairwise[i], 0.0]]))
             gm.addFactor(fid, pair)

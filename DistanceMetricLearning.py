@@ -83,6 +83,26 @@ hogOrientations = 8
 
 # <codecell>
 
+frameLocation = frames[570]
+matteLocation = mattes[570]
+
+frameData = cv2.cvtColor(cv2.imread(frameLocation), cv2.COLOR_BGR2RGB)
+frameData = np.array(frameData, dtype=np.float32)
+#     figure(); imshow(frameData)
+if matteLocation != None and os.path.splitext(frameLocation)[-1] in supportedFrameExt:
+    matte = cv2.cvtColor(cv2.imread(matteLocation), cv2.COLOR_BGR2GRAY)
+    matte = np.array(matte)/255.0
+    frameData = frameData*np.repeat(np.reshape(matte, (matte.shape[0], matte.shape[1], 1)), 3, axis=-1)
+
+feats, featsImg = hog(color.rgb2gray(frameData), orientations=hogOrientations, pixels_per_cell=(16, 16), cells_per_block=(1, 1), visualise=True)
+
+# <codecell>
+
+# figure(); imshow(featsImg, interpolation='nearest')
+figure(); imshow(np.array(frameData, dtype=np.uint8))
+
+# <codecell>
+
 ############# GETTING FEATURES FROM FRAMES ###############
 
 ## compute features for image

@@ -9,9 +9,13 @@ import numpy as np
 
 # <codecell>
 
-def showCustomGraph(img) :
-
-    fig = plt.figure()
+def showCustomGraph(img, title = None, integerAxes = True) :
+    
+    if title != None :
+        fig = plt.figure(title)
+    else :
+        fig = plt.figure()
+    
     ax = fig.add_subplot(111)
     ax.imshow(img, interpolation='nearest')
     
@@ -21,9 +25,15 @@ def showCustomGraph(img) :
         row = int(y+0.5)
         if col>=0 and col<numcols and row>=0 and row<numrows:
             z = img[row,col]
-            return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x, y, z)
+            if integerAxes :
+                return 'x=%d, y=%d, z=%1.4f'%(x+0.5, y+0.5, z)
+            else :
+                return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x, y, z)
         else:
-            return 'x=%1.4f, y=%1.4f'%(x, y)
+            if integerAxes :
+                return 'x=%d, y=%d'%(x+0.5, y+0.5)
+            else :
+                return 'x=%1.4f, y=%1.4f'%(x, y)
     
     ax.format_coord = format_coord
     plt.show()

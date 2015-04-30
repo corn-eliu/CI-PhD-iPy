@@ -38,8 +38,8 @@ app = QtGui.QApplication(sys.argv)
 
 ## read frames from sequence of images
 # sampleData = "pendulum/"
-# sampleData = "ribbon2/"
-sampleData = "flag_blender/"
+sampleData = "ribbon2/"
+# sampleData = "flag_blender/"
 # sampleData = "ribbon1_matted/"
 # sampleData = "little_palm1_cropped/"
 # sampleData = "ballAnimation/"
@@ -58,8 +58,8 @@ print numFrames, len(mattes)
 # <codecell>
 
 ## compute features for image
-blocksPerWidth = 32
-blocksPerHeight = 48
+blocksPerWidth = 16
+blocksPerHeight = 16
 subDivisions = blocksPerWidth*blocksPerHeight
 
 ## given block sizes and img sizes build indices representing each block
@@ -68,6 +68,16 @@ stencils = cgf.stencil2D(blocksPerWidth, blocksPerHeight, imageSize)
 
 features = cgf.histFgFeatures(stencils, subDivisions, frames, mattes)
 figure(); imshow(features.T, interpolation='nearest')
+
+# <codecell>
+
+figure(); imshow(features[462, :].reshape((blocksPerHeight, blocksPerWidth)), interpolation='nearest')
+
+# <codecell>
+
+figure(); 
+xlim(0, blocksPerHeight*blocksPerWidth);
+bar(xrange(blocksPerHeight*blocksPerWidth), features[462, :]/np.sum(features[462, :]));
 
 # <codecell>
 
@@ -144,7 +154,7 @@ print np.max((np.abs(tmp3248/np.max(tmp3248)-tmp1616/np.max(tmp1616))))
 # <codecell>
 
 ## load precomputed distance matrix and filter for label propagation
-name = "vanilla_distMat"
+# name = "vanilla_distMat"
 # name = "histcos_16x16_distMat"
 # name = "hist2demd_32x48_distMat"
 # name = "hist2demd_16x16_distMat"
@@ -158,7 +168,7 @@ name = "vanilla_distMat"
 # name = "appearance_hog_rand150_distMat"
 # name = "appearance_hog_L2_rand150_distMat"
 # name = "appearance_hog_set150_distMat"
-# name = "appearance_hog_L2_set150_distMat"
+name = "appearance_hog_L2_set150_distMat"
 distanceMatrix = np.array(np.load(outputData + name + ".npy"), dtype=np.float)
 distanceMatrix /= np.max(distanceMatrix)
 if True :
@@ -177,7 +187,7 @@ figure(); imshow(distanceMatrix, interpolation='nearest')
 
 # <codecell>
 
-print labelledPoints
+close('all')
 
 # <codecell>
 
@@ -245,7 +255,7 @@ gwv.showCustomGraph(distances)
 gwv.showCustomGraph(orderedDist)
 
 ## compute weights
-w, cumW = vtu.getProbabilities(orderedDist, 0.045, None, False)
+w, cumW = vtu.getProbabilities(orderedDist, 0.06, None, False)
 gwv.showCustomGraph(w)
 # gwv.showCustomGraph(cumW)
 
@@ -328,6 +338,16 @@ print np.sum(labelProbs)
 # np.save(outputData + "labeledPoints.npy", labeledPoints)
 # np.save(outputData + "labelProbs.npy", labelProbs)
 np.save(outputData + "l2dist_guiex60_mult0.045_labels.npy", {"labeledPoints": np.array(labelledPoints), "labelProbs": labelProbs})
+## save label propagation for visualizing isomaps in matlab
+# sio.savemat("labeledPoints.mat", {"labeledPoints":labeledPoints})
+# sio.savemat("l2dist_mult0.05_labelProbs.mat", {"labelProbs":labelProbs})
+
+# <codecell>
+
+## save label propagation for visualizing within videotextgui
+# np.save(outputData + "labeledPoints.npy", labeledPoints)
+# np.save(outputData + "labelProbs.npy", labelProbs)
+np.save(outputData + "learned_appereance_hog_set150_mult0.06_labels.npy", {"labeledPoints": np.array(labelledPoints), "labelProbs": labelProbs})
 ## save label propagation for visualizing isomaps in matlab
 # sio.savemat("labeledPoints.mat", {"labeledPoints":labeledPoints})
 # sio.savemat("l2dist_mult0.05_labelProbs.mat", {"labelProbs":labelProbs})
@@ -635,7 +655,16 @@ app.exec_()
 
 # <codecell>
 
-labelledFrames = np.array(window.labelledFrames)
+# labelledFramesRand = np.copy(labelledFrames)
+labelledFramesSet = np.copy(labelledFrames)
+
+# <codecell>
+
+labelledFrames = np.copy(labelledFramesRand)
+
+# <codecell>
+
+# labelledFrames = np.array(window.labelledFrames)
 print labelledFrames
 # labelledFrames = labelledFrames[]
 # print len(np.argwhere(labelledFrames[:, 1]==0))
@@ -734,13 +763,9 @@ labelledFrames = np.array(window.labelledFrames)
 
 # <codecell>
 
-print labelledFrames
-
-# <codecell>
-
 ## get flatLabelled and fl
 # labelledFrames = np.array(window.labelledFrames)
-labelledFrames = np.load(dataFolder + sampleData + "semantic_labels_gui_set60.npy")
+# labelledFrames = np.load(dataFolder + sampleData + "semantic_labels_gui_set60.npy")
 usedLabels = np.unique(np.ndarray.flatten(labelledFrames[:, 1]))
 fl = np.zeros((len(labelledFrames), len(usedLabels)))
 prevIdx = 0
