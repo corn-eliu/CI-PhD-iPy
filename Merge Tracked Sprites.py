@@ -956,6 +956,266 @@ print "total time:", time.time() - startTime
 
 # <codecell>
 
+## load the tracked sprites
+DICT_SPRITE_NAME = 'sprite_name'
+# DICT_BBOX_AFFINES = 'bbox_affines'
+DICT_BBOXES = 'bboxes'
+DICT_BBOX_ROTATIONS = 'bbox_rotations'
+DICT_BBOX_CENTERS = 'bbox_centers'
+# DICT_NUM_FRAMES = 'num_frames'
+# DICT_START_FRAME = 'start_frame'
+DICT_FRAMES_LOCATIONS = 'frame_locs'
+
+dataPath = "/home/ilisescu/PhD/data/"
+dataSet = "havana/"
+formatString = "{:05d}.png"
+
+TL_IDX = 0
+TR_IDX = 1
+BR_IDX = 2
+BL_IDX = 3
+
+## load dataSet relevant data
+frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
+numOfFrames = len(frameLocs)
+numOfTrackedSprites = 0
+bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
+
+trackedSprites = []
+for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+    trackedSprites.append(np.load(sprite).item())
+
+## merge tracked sprite with bg
+spriteIdx = 1
+sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
+showFigs = False
+
+outputPath = dataPath + dataSet + trackedSprites[spriteIdx][DICT_SPRITE_NAME] + "-masked/"
+
+if outputPath != None and not os.path.isdir(outputPath):
+    os.makedirs(outputPath)
+
+if showFigs :
+    figure(); imshow(bgImage)
+
+startTime = time.time()
+for f, frameCount in zip(np.sort(trackedSprites[spriteIdx][DICT_BBOXES].keys()), xrange(len(trackedSprites[spriteIdx][DICT_BBOXES].keys()))):#[1109:1110]:#sequenceLength):
+    ## get the bbox for the current sprite frame, make it larger and find the rectangular patch to work with
+    ## boundaries of the patch [min, max]
+    
+    s = time.time()
+    xBounds = np.array([bgImage.shape[1], 0.0])
+    yBounds = np.array([bgImage.shape[0], 0.0])
+    
+    
+    if showFigs :
+        ## plot bbox
+        spriteBBox = np.vstack((trackedSprites[spriteIdx][DICT_BBOXES][f], trackedSprites[spriteIdx][DICT_BBOXES][f][0, :])).T
+        plot(spriteBBox[0, :], spriteBBox[1, :])
+    
+    ## make bbox bigger
+    largeBBox = trackedSprites[spriteIdx][DICT_BBOXES][f].T
+    ## move to origin
+    largeBBox = np.dot(np.array([[-trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][0], 1.0, 0.0], 
+                                 [-trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][1], 0.0, 1.0]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    ## make bigger
+    largeBBox = np.dot(np.array([[0.0, 1.0 + PATCH_BORDER, 0.0], 
+                                 [0.0, 0.0, 1.0 + PATCH_BORDER]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    ## move back tooriginal center
+    largeBBox = np.dot(np.array([[trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][0], 1.0, 0.0], 
+                                 [trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][1], 0.0, 1.0]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    
+    
+    ## make sure xBounds are in between 0 and width and yBounds are in between 0 and height
+    xBounds[0] = np.max((0, np.min(largeBBox[0, :])))
+    xBounds[1] = np.min((bgImage.shape[1], np.max(largeBBox[0, :])))
+    yBounds[0] = np.max((0, np.min(largeBBox[1, :])))
+    yBounds[1] = np.min((bgImage.shape[0], np.max(largeBBox[1, :])))
+    
+#     print xBounds, yBounds
+    
+    offset = np.array([np.round(np.array([xBounds[0], yBounds[0]]))], dtype=int).T # [x, y]
+    patchSize = np.array(np.round(np.array([yBounds[1]-yBounds[0], xBounds[1]-xBounds[0]])), dtype=int) # [rows, cols]
+#     print offset, patchSize
+    
+    if showFigs :
+        plot([offset[0], offset[0]+patchSize[1], offset[0]+patchSize[1], offset[0], offset[0]], 
+             [offset[1], offset[1], offset[1]+patchSize[0], offset[1]+patchSize[0], offset[1]])
+
+    ## get image patches based on offset and patchSize
+    bgPatch = np.copy(bgImage[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :])
+    
+    if showFigs :
+        figure(); imshow(bgPatch)
+    
+    
+    spritePatch = np.copy(np.array(Image.open(trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][f]))[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :])
+    
+    if showFigs :
+        figure(); imshow(spritePatch)
+        
+    
+#     print "patch fetch took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+    s = time.time()
+        
+#     ## precompute pixel pairs for all edges in the patch
+#     gridEdges1D = np.array(opengm.secondOrderGridVis(patchSize[1],patchSize[0],True))
+#     print "grideEdges1D took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+#     s = time.time()
+
+#     gridEdges2D = np.zeros((len(gridEdges1D), 4))
+    
+#     gridEdges2D[:, 0] = np.mod(gridEdges1D[:, 0], patchSize[0])
+#     gridEdges2D[:, 1] = np.array(gridEdges1D[:, 0]/patchSize[0], dtype=int)
+#     gridEdges2D[:, 2] = np.mod(gridEdges1D[:, 1], patchSize[0])
+#     gridEdges2D[:, 3] = np.array(gridEdges1D[:, 1]/patchSize[0], dtype=int)
+
+#     print "grideEdges2D took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+#     s = time.time()
+
+    ## get uniform prior for bg patch
+    bgPrior = -np.log(np.ones(patchSize)/np.prod(patchSize))
+    
+    ## get priors for all sprite patches
+    spritePrior = np.zeros(patchSize)
+    xs = np.ndarray.flatten(np.arange(patchSize[1], dtype=float).reshape((patchSize[1], 1)).repeat(patchSize[0], axis=-1))
+    ys = np.ndarray.flatten(np.arange(patchSize[0], dtype=float).reshape((1, patchSize[0])).repeat(patchSize[1], axis=0))
+    data = np.vstack((xs.reshape((1, len(xs))), ys.reshape((1, len(ys)))))
+    
+    ## get covariance and means of prior on patch by using the bbox
+    spriteBBox = trackedSprites[spriteIdx][DICT_BBOXES][f].T
+    segment1 = spriteBBox[:, 0] - spriteBBox[:, 1]
+    segment2 = spriteBBox[:, 1] - spriteBBox[:, 2]
+    sigmaX = np.linalg.norm(segment1)/3.7
+    sigmaY = np.linalg.norm(segment2)/3.7
+
+#     ## find rotation as described here http://math.stackexchange.com/questions/612006/decomposing-an-affine-transformation
+#     A11 = getAffMat(trackedSprites[spriteIdx][DICT_BBOX_AFFINES][f, :])[0, 1]
+#     A21 = getAffMat(trackedSprites[spriteIdx][DICT_BBOX_AFFINES][f, :])[1, 1]
+# #     rotRadians = np.pi-np.arctan(A21/A11)
+#     rotRadians = np.arccos(np.dot((segment1)/np.linalg.norm(segment1), np.array([1.0, 0.0])))
+#     b = np.array([1.0, 0.0])
+#     ## arctan2 is computed based on formula: a[0]*b[1]-b[0]*a[1], a[0]*b[0]+a[1]*b[1]) where b = [1, 0] and a = segment1
+#     rotRadians = np.mod(np.arctan2(-segment1[1], segment1[0]),2*np.pi)
+#     print "rotation", rotRadians*180.0/np.pi
+    rotRadians = trackedSprites[spriteIdx][DICT_BBOX_ROTATIONS][f]
+    
+    rotMat = np.array([[np.cos(rotRadians), -np.sin(rotRadians)], [np.sin(rotRadians), np.cos(rotRadians)]])
+    
+    means = np.reshape(trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f], (2, 1)) - offset
+    covs = np.dot(np.dot(rotMat.T, np.array([[sigmaX**2, 0.0], [0.0, sigmaY**2]])), rotMat)
+    
+#     print sigmaX, sigmaY, rotRadians, means
+    spritePrior = np.reshape(minusLogMultivariateNormal(data, means, covs, True), patchSize, order='F')
+    
+#     print "sprite prior took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+    s = time.time()
+    
+    
+    if showFigs :
+        figure(); imshow(spritePrior)
+#         gwv.showCustomGraph(np.reshape(multivariateNormal(data, means, covs, True), patchSize, order='F'))
+#         gwv.showCustomGraph(np.reshape(minusLogMultivariateNormal(data, means, covs, True), patchSize, order='F'))
+
+    ## merge two overlapping patches
+
+    h = patchSize[0]
+    w = patchSize[1]
+    
+    patAPixs = np.empty(0, dtype=uint)
+    patBPixs = np.empty(0, dtype=uint)
+    
+    ## force small square of size squarePadding*2 + 1 around center of patch to come from patch B (i.e. the car)
+    squarePadding = 6
+    rows = np.ndarray.flatten(arange((h/2)-squarePadding, (h/2)+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
+    cols = np.ndarray.flatten(arange((w/2)-squarePadding, (w/2)+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
+    patBPixs = np.unique(np.concatenate((patBPixs, np.array(rows + cols*h, dtype=uint))))
+    
+    ## force one ring of pixels on the edge of the patch to come from patch A (i.e. the bg) (unless that column/row is intersected by the bbox)
+    if np.min((largeBBox)[0, :]) > 0.0 :
+#         print "adding left column to A"
+        patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h, dtype=uint)[1:-1])))
+    else :
+#         print "adding left column to B"
+        patBPixs = np.unique(np.concatenate((patBPixs, np.arange(0, h, dtype=uint)[1:-1])))
+    if np.min((largeBBox)[1, :]) > 0.0 :
+#         print "adding top row to A"
+        patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)[1:-1])))
+    else :
+#         print "adding top row to B"
+        patBPixs = np.unique(np.concatenate((patBPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)[1:-1])))
+    if np.max((largeBBox)[1, :]) < bgImage.shape[0] :
+#         print "adding bottom row to A"
+        patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)[1:-1]+h-1)))
+    else :
+#         print "adding bottom row to B"
+        patBPixs = np.unique(np.concatenate((patBPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)[1:-1]+h-1)))
+    if np.max((largeBBox)[0, :]) < bgImage.shape[1] :
+#         print "adding right column to A"
+        patAPixs = np.unique(np.concatenate((patAPixs, np.arange(h*(w-1), h*w, dtype=uint)[1:-1])))
+    else :
+#         print "adding right column to B"
+        patBPixs = np.unique(np.concatenate((patBPixs, np.arange(h*(w-1), h*w, dtype=uint)[1:-1])))
+    
+#     patBPixs = np.empty(0)
+    
+    patA = np.copy(bgPatch/255.0)
+    patB = np.copy(spritePatch/255.0)
+    
+#     print "patch pixels took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+    s = time.time()
+    
+    labels, unaryCosts, pairCosts, graphModel = getGraphcutOnOverlap(patA, patB, patAPixs, patBPixs, 0.001, 
+                                                       bgPrior.reshape(np.prod(patchSize), order='F'),
+                                                       spritePrior.reshape(np.prod(patchSize), order='F'))
+    
+#     print "graphcut took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+    s = time.time()
+    
+    if showFigs :
+        figure(); imshow(labels, interpolation='nearest')
+    
+    outputPatch = np.zeros((patA.shape[0], patA.shape[1], patA.shape[2]+1), dtype=uint8)
+    for i in xrange(labels.shape[0]) :
+        for j in xrange(labels.shape[1]) :
+            if labels[i, j] == 0 :
+                ## patA stands for the bgPatch but I want to set the pixels here to 0 to save space
+                outputPatch[i, j, 0:-1] = 0#patA[i, j, :]*255
+            else :
+                outputPatch[i, j, 0:-1] = patB[i, j, :]*255
+                outputPatch[i, j, -1] = 255
+    
+    if showFigs :
+        figure(); imshow(outputPatch, interpolation='nearest')
+        
+    currentFrame = np.zeros((bgImage.shape[0], bgImage.shape[1], bgImage.shape[2]+1), dtype=uint8)
+    currentFrame[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :] = np.copy(outputPatch)
+    
+    if showFigs :
+        figure(); imshow(currentFrame)
+        figure(); imshow(np.array(Image.open(trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][f])))
+    
+    Image.fromarray((currentFrame).astype(numpy.uint8)).save(outputPath + trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][f].split('/')[-1])
+    
+#     print "saving took", time.time()-s, "seconds"
+#     sys.stdout.flush()
+    sys.stdout.write('\r' + "Done " + np.string_(frameCount+1) + " images of " + np.string_(len(trackedSprites[spriteIdx][DICT_BBOXES].keys())))
+    sys.stdout.flush()
+    
+print 
+print "total time:", time.time() - startTime
+
+# <codecell>
+
 tmp = np.zeros(patchSize)
 tmp[np.array(np.mod(patAPixs, patchSize[0]), dtype=int), np.array(patAPixs/patchSize[0], dtype=int)] += 1
 tmp[np.array(np.mod(patBPixs, patchSize[0]), dtype=int), np.array(patBPixs/patchSize[0], dtype=int)] += 2

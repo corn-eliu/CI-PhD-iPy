@@ -116,10 +116,17 @@ def getMRFCosts(semanticLabels, desiredSemantics, startFrame, sequenceLength) :
     # (variance would have to be 5 or 6 orders of magnitude smaller to make breaking the timeline cheaper than following it)
     distVariance = 0.001#0.001
     numSemantics = semanticLabels.shape[-1]
-    semanticsCosts = vectorisedMinusLogMultiNormal(semanticLabels, np.array(desiredSemantics).reshape((1, numSemantics)), np.eye(numSemantics)*distVariance, True)
+#     semanticsCosts = vectorisedMinusLogMultiNormal(semanticLabels, np.array(desiredSemantics).reshape((1, numSemantics)), np.eye(numSemantics)*distVariance, True)
+    semanticsCosts = np.zeros((k, desiredSemantics.shape[0]))
+    for i in xrange(desiredSemantics.shape[0]) :
+        semanticsCosts[:, i] = vectorisedMinusLogMultiNormal(semanticLabels, desiredSemantics[i, :].reshape((1, numSemantics)), np.eye(numSemantics)*distVariance, True)
+    
+    if desiredSemantics.shape[0] < sequenceLength :
+        print "lalala"
+        semanticsCosts = semanticsCosts.reshape((k, 1)).repeat(sequenceLength, axis=-1)
     
     # set unaries to minus log of the likelihood + minus log of the semantic labels' distance to the 
-    unaries = -np.log(likelihood) + semanticsCosts.reshape((k, 1)).repeat(sequenceLength, axis=-1)
+    unaries = -np.log(likelihood) + semanticsCosts#.reshape((k, 1)).repeat(sequenceLength, axis=-1)
 #     unaries = semanticsCosts.reshape((k, 1)).repeat(sequenceLength, axis=-1)
     
 # #     # set cost of start frame to 0 NOTE: not sure if I should use this or the above with the renormalization
@@ -186,6 +193,28 @@ def solveMRF(unaries, pairwise) :
 
 # <codecell>
 
+def smoothstep(delay) :
+    # Scale, and clamp x to 0..1 range
+    edge0 = 0.0
+    edge1 = 1.0
+    x = np.arange(0.0, 1.0, 1.0/(delay+1))
+    x = np.clip((x - edge0)/(edge1 - edge0), 0.0, 1.0);
+    return (x*x*x*(x*(x*6 - 15) + 10))[1:]
+
+def toggleLabelsSmoothly(labels, delay) :
+    newLabels = np.roll(labels, 1)
+    steps = smoothstep(delay)
+    result = np.zeros((delay, labels.shape[-1]))
+    ## where diff is less than zero, label prob went from 0 to 1
+    result[:, np.argwhere(labels-newLabels < 0)[0, 1]] = steps
+    ## where diff is greater than zero, label prob went from 1 to 0
+    result[:, np.argwhere(labels-newLabels > 0)[0, 1]] = 1.0 - steps
+    return result
+
+print toggleLabelsSmoothly(np.array([[0.0, 1.0]]), 4)
+
+# <codecell>
+
 ############################################ TEST TEST TEST TEST ############################################ 
 spriteIdx = -1
 for i in xrange(len(trackedSprites)) :
@@ -199,14 +228,18 @@ semanticLabels = np.zeros((len(trackedSprites[spriteIdx][DICT_BBOX_CENTERS])+1, 
 ## label 0 means sprite not visible (i.e. only show the first empty frame)
 semanticLabels[0, 0] = 1.0
 semanticLabels[1:, 1] = 1.0
-desiredLabel = np.array([0.0, 1.0])
+delay = 8
+desiredLabel = np.array([1.0, 0.0]).reshape((1, 2))#.repeat(300-delay/2, axis=0)
+desiredLabel = np.concatenate((desiredLabel, toggleLabelsSmoothly(np.array([[1.0, 0.0]]), delay)))
+desiredLabel = np.concatenate((desiredLabel, np.array([0.0, 1.0]).reshape((1, 2)).repeat(600-delay, axis=0)))
 # semanticDist = np.sum(np.power(semanticLabels-desiredLabel, 2), axis=-1)
+desiredLabel = window.burstSemanticsToggle(np.array([1.0, 0.0]), 300, 2, 20)
 
 tic = time.time()
-unaries, pairwise = getMRFCosts(semanticLabels, desiredLabel, 0, 600)
+unaries, pairwise = getMRFCosts(semanticLabels, desiredLabel, 0, 300)
 print "computed costs in", time.time() - tic; sys.stdout.flush()
 tic = time.time()
-gwv.showCustomGraph(unaries, title="unaries")
+gwv.showCustomGraph(unaries[1:, :], title="unaries")
 minCostTraversal = solveMRF(unaries, pairwise)
 print "solved in", time.time() - tic; sys.stdout.flush()
 tic = time.time()
@@ -267,10 +300,14 @@ class Window(QtGui.QWidget):
     def __init__(self):
         super(Window, self).__init__()
         
-        self.createGUI()
-        
         self.setWindowTitle("Looping the Unloopable")
         self.resize(1280, 720)
+        
+        self.playIcon = QtGui.QIcon("play.png")
+        self.pauseIcon = QtGui.QIcon("pause.png")
+        self.doPlaySequence = False
+        
+        self.createGUI()
         
         self.isScribbling = False
         
@@ -279,14 +316,12 @@ class Window(QtGui.QWidget):
         self.trackedSprites = []
         self.currentSpriteIdx = -1
         
-        self.frameIdx = -1
-#         self.frameImg = None
+        self.frameIdx = 0
         self.overlayImg = QtGui.QImage(QtCore.QSize(100, 100), QtGui.QImage.Format_ARGB32)
-#         self.showFrame(self.frameIdx)
         
+        ## get background image
         im = np.ascontiguousarray(Image.open(dataPath + dataSet + "median.png"))
         self.bgImage = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
-        
         self.frameLabel.setFixedSize(self.bgImage.width(), self.bgImage.height())
         self.frameLabel.setImage(self.bgImage)
         
@@ -295,117 +330,98 @@ class Window(QtGui.QWidget):
         self.generatedSequence = []
         
         self.playTimer = QtCore.QTimer(self)
-        self.playTimer.setInterval(1000/60)
-        self.playTimer.start()
+        self.playTimer.setInterval(1000/30)
         self.playTimer.timeout.connect(self.renderOneFrame)
+        
+        self.EXTEND_LENGTH = 100 + 1 ## since I get rid of the frist frame from the generated sequence because it's forced to be the one already showing
+        self.TOGGLE_DELAY = 8
+        self.BURST_ENTER_DELAY = 2
+        self.BURST_EXIT_DELAY = 20
+        
+        self.DO_EXTEND = 0
+        self.DO_TOGGLE = 1
+        self.DO_BURST = 2
+        
+        if len(glob.glob(dataPath+dataSet+"generatedSequence-*")) > 0 :
+            ## load latest sequence
+            self.generatedSequence = list(np.load(np.sort(glob.glob(dataPath+dataSet+"generatedSequence-*"))[-1]))
+            if len(self.generatedSequence) > 0 :
+                ## update sliders
+                self.frameIdxSlider.setMaximum(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
+                self.frameIdxSpinBox.setRange(0, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
+                
+                self.frameInfo.setText("Generated sequence length: " + np.string_(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
+                
+                self.showFrame(self.frameIdx)
         
         self.setFocus()
         
     def renderOneFrame(self) :
         idx = self.frameIdx + 1
         if idx >= 0 and len(self.generatedSequence) > 0 : #idx < len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) :
-            self.showFrame(np.mod(idx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
+            self.frameIdxSpinBox.setValue(np.mod(idx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
     
     def showFrame(self, idx) :
         if idx >= 0 and len(self.generatedSequence) > 0 and idx < len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) :
             self.frameIdx = idx
-            ## HACK ##
-    #         im = np.ascontiguousarray(Image.open((dataPath+dataSet+formatString).format(self.frameIdx+1)))
-            spriteIdx = self.generatedSequence[0][DICT_SPRITE_IDX]
-            frameToShowIdx = self.generatedSequence[0][DICT_SEQUENCE_FRAMES][self.frameIdx]-1
-            tmp = np.sort(self.trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())[frameToShowIdx]
             
-            im = np.ascontiguousarray(Image.open(self.trackedSprites[0][DICT_FRAMES_LOCATIONS][tmp]))
-            self.frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
-            
-            self.frameLabel.setFixedSize(self.frameImg.width(), self.frameImg.height())
-            self.frameLabel.setImage(self.frameImg)
-            
-#             self.frameInfo.setText(frameLocs[self.frameIdx])
-            
-#             if self.currentSpriteIdx < len(self.trackedSprites) and self.currentSpriteIdx >= 0 :
-#                 ## set self.bbox to bbox computed for current frame if it exists
-#                 if not self.tracking :
-#                     if self.frameIdx in self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES].keys() :
-#                         self.bbox[TL_IDX].setX(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][TL_IDX, 0])
-#                         self.bbox[TL_IDX].setY(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][TL_IDX, 1])
-#                         self.bbox[TR_IDX].setX(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][TR_IDX, 0])
-#                         self.bbox[TR_IDX].setY(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][TR_IDX, 1])
-#                         self.bbox[BR_IDX].setX(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][BR_IDX, 0])
-#                         self.bbox[BR_IDX].setY(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][BR_IDX, 1])
-#                         self.bbox[BL_IDX].setX(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][BL_IDX, 0])
-#                         self.bbox[BL_IDX].setY(self.trackedSprites[self.currentSpriteIdx][DICT_BBOXES][self.frameIdx][BL_IDX, 1])
-#                         self.bbox[-1] = self.bbox[TL_IDX]
-                        
-#                         self.centerPoint.setX(self.trackedSprites[self.currentSpriteIdx][DICT_BBOX_CENTERS][self.frameIdx][0])
-#                         self.centerPoint.setY(self.trackedSprites[self.currentSpriteIdx][DICT_BBOX_CENTERS][self.frameIdx][1])
-                        
-#                         if self.drawOverlay(False) :
-#                             self.frameLabel.setOverlay(self.overlayImg)
-                            
-#                         self.bboxIsSet = True
-#                     else :
-#                         if self.drawOverlay(False, False, False) :
-#                             self.frameLabel.setOverlay(self.overlayImg)
-            
-    def updateBBox(self) :
-        if self.settingBBox :
-#             print "settingBBox"
-            self.bbox[TR_IDX] = QtCore.QPointF(self.bbox[BR_IDX].x(), self.bbox[TL_IDX].y())
-            self.bbox[BL_IDX] = QtCore.QPointF(self.bbox[TL_IDX].x(), self.bbox[BR_IDX].y())
-            self.bbox[-1] = self.bbox[TL_IDX]
-            
-            tl = self.bbox[TL_IDX]
-            br = self.bbox[BR_IDX]
-            self.centerPoint = QtCore.QPointF(min((tl.x(), br.x())) + (max((tl.x(), br.x())) - min((tl.x(), br.x())))/2.0, 
-                                              min((tl.y(), br.y())) + (max((tl.y(), br.y())) - min((tl.y(), br.y())))/2.0)
-            
-            if self.drawOverlay(False) :
-                self.frameLabel.setOverlay(self.overlayImg)
-            
-    def drawOverlay(self, doDrawFeats = True, doDrawBBox = True, doDrawCenter = True) :
-        if self.frameImg != None :
-            if self.overlayImg.size() != self.frameImg.size() :
-                self.overlayImg = self.overlayImg.scaled(self.frameImg.size())
-            
+            if self.bgImage != None and self.overlayImg.size() != self.bgImage.size() :
+                self.overlayImg = self.overlayImg.scaled(self.bgImage.size())
             ## empty image
             self.overlayImg.fill(QtGui.QColor.fromRgb(255, 255, 255, 0))
             
+            ## go through all the sprites used in the sequence
+            for s in xrange(len(self.generatedSequence)) :
+                ## index in self.trackedSprites of current sprite in self.generatedSequence
+                spriteIdx = self.generatedSequence[s][DICT_SPRITE_IDX]
+                ## index of current sprite frame to visualize
+                sequenceFrameIdx = self.generatedSequence[s][DICT_SEQUENCE_FRAMES][self.frameIdx]-1
+                ## -1 stands for not shown or eventually for more complicated sprites as the base frame to keep showing when sprite is frozen
+                ## really in the sequence I have 0 for the static frame but above I do -1
+                if sequenceFrameIdx >= 0 :
+                    ## the trackedSprites data is indexed (i.e. the keys) by the frame indices in the original full sequence and keys are not sorted
+                    frameToShowIdx = np.sort(self.trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())[sequenceFrameIdx]
+                    
+                    self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
+                                     self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked())
+            
+            self.frameLabel.setFixedSize(self.overlayImg.width(), self.overlayImg.height())
+            self.frameLabel.setOverlay(self.overlayImg)
+            
+    def drawOverlay(self, sprite, frameIdx, doDrawSprite, doDrawBBox, doDrawCenter) :
+        if self.overlayImg != None :            
             painter = QtGui.QPainter(self.overlayImg)
             
+            ## draw sprite
+            if doDrawSprite :
+                ## maybe save all this data in trackedSprites by modifying it in "Merge Tracked Sprites"
+                frameName = sprite[DICT_FRAMES_LOCATIONS][frameIdx].split(os.sep)[-1]
+                maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked"
+                
+                if os.path.isdir(maskDir) and os.path.exists(maskDir+"/"+frameName) :
+#                     mask = np.array(Image.open(maskDir+"/mask-"+frameName))[:, :, 0]
+#                     ## for whatever reason for this to work the image needs to be BGR
+#                     im = np.concatenate((cv2.imread(sprite[DICT_FRAMES_LOCATIONS][frameIdx]), mask.reshape(np.hstack((mask.shape, 1)))), axis=-1)
+#                     im = np.ascontiguousarray(im)
+                    im = np.ascontiguousarray(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED))
+                    img = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32)
+                else :
+                    im = np.ascontiguousarray(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameIdx]))
+                    img = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888)
+                    
+                painter.drawImage(QtCore.QPoint(0, 0), img)
+            
+            painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 255, 255), 3, 
+                                      QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
             ## draw bbox
             if doDrawBBox :
-                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 255, 255), 3, 
-                                          QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-                for p1, p2 in zip(self.bbox[0:-1], self.bbox[1:]) :
-                    painter.drawLine(p1, p2)
+                bbox = sprite[DICT_BBOXES][frameIdx]
+                for p1, p2 in zip(np.mod(arange(4), 4), np.mod(arange(1, 5), 4)) :
+                    painter.drawLine(QtCore.QPointF(bbox[p1, 0], bbox[p1, 1]), QtCore.QPointF(bbox[p2, 0], bbox[p2, 1]))
             
             ## draw bbox center
             if doDrawCenter :
-                painter.drawPoint(self.centerPoint)
-            
-            ## draw tracked features
-            if doDrawFeats :
-                if self.tracker != None and self.tracker.has_result :
-                    
-                    painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255, 255, 255, 255), 1, 
-                                          QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-                    for point in self.tracker.tracked_keypoints[:, 0:-1] :
-                        painter.drawEllipse(QtCore.QPointF(point[0], point[1]), 3, 3)
-                        
-                    painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 255, 255), 1, 
-                                          QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-                    for point in self.tracker.votes[:, :2] :
-                        painter.drawEllipse(QtCore.QPointF(point[0], point[1]), 3, 3)
-                    
-                    painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255, 0, 0, 255), 1, 
-                                          QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-                    for point in self.tracker.outliers[:, :2] :
-                        painter.drawEllipse(QtCore.QPointF(point[0], point[1]), 3, 3)
-                    
-            return True
-        else :
-            return False
+                painter.drawPoint(QtCore.QPointF(sprite[DICT_BBOX_CENTERS][frameIdx][0], sprite[DICT_BBOX_CENTERS][frameIdx][1]))
             
     def changeSprite(self, row) :
 #         print "changingSprite"
@@ -446,7 +462,21 @@ class Window(QtGui.QWidget):
     def closeEvent(self, event) :
         print "closing"
         sys.stdout.flush()
-#         self.saveTrackedSprites()
+        ## saving sequence
+        if self.autoSaveBox.isChecked() and len(self.generatedSequence) > 0 :
+            np.save(dataPath + dataSet + "generatedSequence-" + datetime.datetime.now().strftime('%Y-%M-%d_%H:%M:%S'), self.generatedSequence)
+            
+    def deleteGeneratedSequence(self) :
+        del self.generatedSequence
+        self.generatedSequence = []
+        
+        ## update sliders
+        self.frameIdxSlider.setMaximum(0)
+        self.frameIdxSpinBox.setRange(0, 0)
+        
+        self.frameInfo.setText("Info text")
+        
+        self.frameIdxSpinBox.setValue(0)
     
     def mousePressed(self, event):
 #         print event.pos()
@@ -473,11 +503,134 @@ class Window(QtGui.QWidget):
             print "pressed key", pressedIdx,
             if pressedIdx >= 0 and pressedIdx < len(self.trackedSprites) :
                 print "i.e. sprite", self.trackedSprites[pressedIdx][DICT_SPRITE_NAME]
-                self.toggleSpriteSemantics(pressedIdx)
+#                 self.toggleSpriteSemantics(pressedIdx)
+                self.addNewSpriteTrackToSequence(pressedIdx)
+    
+                if len(self.generatedSequence) > 0 :
+                    extendMode = {}
+                    extendMode[len(self.generatedSequence)-1] = self.DO_BURST
+                    self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), self.frameIdx)
+                    
+                    additionalFrames = len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES]) - len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])
+                    if additionalFrames < 0 :
+                        ## extend new sprite's sequence to match total sequence's length
+                        print "extending new sprite's sequence"
+                        extendMode = {}
+                        extendMode[len(self.generatedSequence)-1] = self.DO_EXTEND
+                        self.extendSequence(self.extendSequenceTracksSemantics(-additionalFrames+1, extendMode), len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1)
+                    elif additionalFrames > 0 :
+                        ## extend existing sprites' sequences to match the new total sequence's length because of newly added sprite
+                        print "extending existing sprites' sequences"
+                        extendMode = {}
+                        for i in xrange(len(self.generatedSequence)-1) :
+                            extendMode[i] = self.DO_EXTEND
+                        self.extendSequence(self.extendSequenceTracksSemantics(additionalFrames+1, extendMode), len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
+                        
+                self.showFrame(self.frameIdx)                        
             else :
                 print
+        elif e.key() == QtCore.Qt.Key_Space :
+            extendMode = {}
+            for i in xrange(len(self.generatedSequence)) :
+                extendMode[i] = self.DO_EXTEND
+            if len(self.generatedSequence) > 0 :
+                self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), self.frameIdx)
             
         sys.stdout.flush()
+            
+    def extendSequence(self, desiredSemantics, startingFrame) :
+        for i in desiredSemantics.keys() :
+            if i >= 0 and i < len(self.generatedSequence) :
+                spriteIdx = self.generatedSequence[i][DICT_SPRITE_IDX]
+                
+                ### HACK ### semanticLabels for each sprite are just saying that the first frame of the sprite sequence means sprite not visible and the rest mean it is
+                semanticLabels = np.zeros((len(self.trackedSprites[spriteIdx][DICT_BBOX_CENTERS])+1, 2))
+                ## label 0 means sprite not visible (i.e. only show the first empty frame)
+                semanticLabels[0, 0] = 1.0
+                semanticLabels[1:, 1] = 1.0
+                
+                ## set starting frame
+                if len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES]) == 0 :
+                    desiredStartFrame = 0
+                else :
+                    desiredStartFrame = self.generatedSequence[i][DICT_SEQUENCE_FRAMES][startingFrame]
+                
+                ## do dynamic programming optimization
+                unaries, pairwise = getMRFCosts(semanticLabels, desiredSemantics[i], desiredStartFrame, len(desiredSemantics[i]))
+                minCostTraversal = solveMRF(unaries, pairwise)
+                
+                ## update dictionary
+                # don't take the first frame of the minCostTraversal as it would just repeat the last seen frame
+                self.generatedSequence[i][DICT_SEQUENCE_FRAMES] = np.hstack((self.generatedSequence[i][DICT_SEQUENCE_FRAMES][:startingFrame+1], minCostTraversal[1:]))
+                self.generatedSequence[i][DICT_DESIRED_SEMANTICS] = np.vstack((self.generatedSequence[i][DICT_DESIRED_SEMANTICS][:startingFrame+1],
+                                                                               desiredSemantics[i][1:, :]))
+                
+                ## update sliders
+                self.frameIdxSlider.setMaximum(len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES])-1)
+                self.frameIdxSpinBox.setRange(0, len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES])-1)
+                
+                self.frameInfo.setText("Generated sequence length: " + np.string_(len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES])))
+                    
+                print "sequence with", len(self.generatedSequence), "sprites, extended by", len(desiredSemantics[i])-1, "frames"
+    
+    def extendSequenceTracksSemantics(self, length, mode) :
+        spriteSemantics = {}
+        ## mode contains the way the track is extended (one of DO_EXTEND, DO_TOGGLE, DO_BURST)
+        for i in mode.keys() :
+            if i >= 0 and i < len(self.generatedSequence) :
+                if len(self.generatedSequence[i][DICT_DESIRED_SEMANTICS]) > 0 :
+                    currentSemantics = self.generatedSequence[i][DICT_DESIRED_SEMANTICS][-1, :].reshape((1, 2))
+                else :
+                    ## hardcoded desired "not show" label
+                    currentSemantics = np.array([1.0, 0.0]).reshape((1, 2))
+                    
+                desiredSemantics = np.array([1.0, 0.0]).reshape((1, 2)).repeat(length, axis=0)
+                if mode[i] == self.DO_EXTEND :
+                    ## extend semantics
+                    desiredSemantics = currentSemantics.repeat(length, axis=0)
+                elif mode[i] == self.DO_TOGGLE :
+                    ## toggle semantics
+                    desiredSemantics = self.toggleSequenceTrackSemantics(currentSemantics, length, self.TOGGLE_DELAY)
+                elif mode[i] == self.DO_BURST :
+                    ## burst toggle semantics from current to toggle and back to current
+                    desiredSemantics = self.burstSemanticsToggle(currentSemantics, length, self.BURST_ENTER_DELAY, self.BURST_EXIT_DELAY)
+                        
+                spriteSemantics[i] = desiredSemantics
+                    
+        return spriteSemantics
+    
+    def toggleSequenceTrackSemantics(self, startSemantics, length, toggleDelay) :
+        desiredSemantics = startSemantics.reshape((1, 2))
+        desiredSemantics = np.concatenate((desiredSemantics, toggleLabelsSmoothly(startSemantics.reshape((1, 2)), toggleDelay)))
+        desiredSemantics = np.concatenate((desiredSemantics, np.roll(startSemantics.reshape((1, 2)), 1).repeat(length-toggleDelay-1, axis=0)))
+        
+        return desiredSemantics
+        
+    def burstSemanticsToggle(self, startSemantics, length, enterDelay, exitDelay):
+        desiredSemantics = startSemantics.reshape((1, 2))
+        desiredSemantics = np.concatenate((desiredSemantics, toggleLabelsSmoothly(startSemantics.reshape((1, 2)), enterDelay)))
+        desiredSemantics = np.concatenate((desiredSemantics, np.roll(startSemantics.reshape((1, 2)), 1).repeat(length-2*(enterDelay+exitDelay), axis=0)))
+        desiredSemantics = np.concatenate((desiredSemantics, toggleLabelsSmoothly(np.roll(startSemantics.reshape((1, 2)), 1).reshape((1, 2)), exitDelay)))
+        desiredSemantics = np.concatenate((desiredSemantics, startSemantics.reshape((1, 2)).repeat(enterDelay+exitDelay-1, axis=0)))
+        
+        return desiredSemantics
+    
+    def addNewSpriteTrackToSequence(self, spriteIdx) :
+        if spriteIdx >= 0 and spriteIdx < len(self.trackedSprites) :
+            print "adding new sprite to sequence"
+            self.generatedSequence.append({
+                                           DICT_SPRITE_IDX:spriteIdx,
+                                           DICT_SPRITE_NAME:self.trackedSprites[spriteIdx][DICT_SPRITE_NAME],
+                                           DICT_SEQUENCE_FRAMES:np.empty(0, dtype=int),
+                                           DICT_DESIRED_SEMANTICS:np.empty((0, 2), dtype=float)#[],
+#                                                DICT_FRAME_SEMANTIC_TOGGLE:[]
+                                          })
+            if len(self.generatedSequence) > 1 :
+                ## just hardcode filling the new sprite's sequence of frames and semantics to the "not shown" label
+                maxFrames = len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])
+                self.generatedSequence[-1][DICT_DESIRED_SEMANTICS] = np.array([1.0, 0.0]).reshape((1, 2)).repeat(maxFrames, axis=0)
+                self.generatedSequence[-1][DICT_SEQUENCE_FRAMES] = np.zeros(maxFrames)
+        
         
     def toggleSpriteSemantics(self, spriteIdx) :
         if spriteIdx >= 0 and spriteIdx < len(self.trackedSprites) :
@@ -496,8 +649,8 @@ class Window(QtGui.QWidget):
                                                DICT_SPRITE_IDX:spriteIdx,
                                                DICT_SPRITE_NAME:self.trackedSprites[spriteIdx][DICT_SPRITE_NAME],
                                                DICT_SEQUENCE_FRAMES:np.empty(0, dtype=int),
-                                               DICT_DESIRED_SEMANTICS:[],
-                                               DICT_FRAME_SEMANTIC_TOGGLE:[]
+                                               DICT_DESIRED_SEMANTICS:np.empty((0, 2), dtype=float)#[],
+#                                                DICT_FRAME_SEMANTIC_TOGGLE:[]
                                               })
                 
                 desiredSpriteIdx = len(self.generatedSequence)-1
@@ -506,10 +659,10 @@ class Window(QtGui.QWidget):
                 ## set the desired semantics
                 if len(self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS]) == 0 :
                     ## start by asking to show the sprite
-                    desiredSemantics = np.array([0.0, 1.0])
+                    desiredSemantics = np.array([0.0, 1.0]).reshape((1, 2)).repeat(600, axis=0)
                 else :
                     ## slide last requested semantics by 1 to toggle the opposite semantic label
-                    desiredSemantics = np.roll(self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS][-1], 1)
+                    desiredSemantics = np.roll(self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS][-1], 1).reshape((1, 2)).repeat(600, axis=0)
                     
                 ## set starting frame
                 if len(self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES]) == 0 :
@@ -528,11 +681,19 @@ class Window(QtGui.QWidget):
                 self.minCostTraversal = solveMRF(self.unaries, self.pairwise)
                 
                 ## update dictionary
-                self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS].append(desiredSemantics)
-                self.generatedSequence[desiredSpriteIdx][DICT_FRAME_SEMANTIC_TOGGLE].append(self.frameIdx)
+#                 self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS].append(desiredSemantics)
+                self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS] = np.vstack((self.generatedSequence[desiredSpriteIdx][DICT_DESIRED_SEMANTICS][:self.frameIdx+1],
+                                                                                              desiredSemantics[1:, :]))
+#                 self.generatedSequence[desiredSpriteIdx][DICT_FRAME_SEMANTIC_TOGGLE].append(self.frameIdx)
                 # don't take the first frame of the minCostTraversal as it would just repeat the last seen frame
-                self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES] = np.hstack((self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES][:self.frameIdx], 
+                self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES] = np.hstack((self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES][:self.frameIdx+1], 
                                                                                             self.minCostTraversal[1:]))
+                
+                ## update sliders
+                self.frameIdxSlider.setMaximum(len(self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES])-1)
+                self.frameIdxSpinBox.setRange(0, len(self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES])-1)
+                
+                self.frameInfo.setText("Generated sequence length: " + np.string_(len(self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES])))
                 
                 print self.generatedSequence[desiredSpriteIdx][DICT_SEQUENCE_FRAMES]
                 
@@ -551,6 +712,16 @@ class Window(QtGui.QWidget):
             self.keyPressEvent(event)
             return True
         return QtGui.QWidget.eventFilter(self, obj, event)
+    
+    def playSequenceButtonPressed(self) :
+        if self.doPlaySequence :
+            self.doPlaySequence = False
+            self.playSequenceButton.setIcon(self.playIcon)
+            self.playTimer.stop()
+        else :
+            self.doPlaySequence = True
+            self.playSequenceButton.setIcon(self.pauseIcon)
+            self.playTimer.start()
         
     def createGUI(self) :
         
@@ -570,7 +741,7 @@ class Window(QtGui.QWidget):
         self.frameIdxSlider.setTickPosition(QtGui.QSlider.TicksBothSides)
         self.frameIdxSlider.setMinimum(0)
         self.frameIdxSlider.setMaximum(0)
-        self.frameIdxSlider.setTickInterval(100)
+        self.frameIdxSlider.setTickInterval(50)
         self.frameIdxSlider.setSingleStep(1)
         self.frameIdxSlider.setPageStep(100)
         self.frameIdxSlider.installEventFilter(self)
@@ -590,10 +761,22 @@ class Window(QtGui.QWidget):
         self.spriteListTable.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
         self.spriteListTable.setItem(0, 0, QtGui.QTableWidgetItem("No tracked sprites"))
         
-#         self.newSpriteButton = QtGui.QPushButton("&New Sprite")
+        self.drawSpritesBox = QtGui.QCheckBox("Render Sprites")
+        self.drawSpritesBox.setChecked(True)
+        self.drawBBoxBox = QtGui.QCheckBox("Render Bounding Box")
+        self.drawCenterBox = QtGui.QCheckBox("Render BBox Center")
         
-#         self.deleteCurrentSpriteBBoxButton = QtGui.QPushButton("Delete BBox")
-#         self.setCurrentSpriteBBoxButton = QtGui.QPushButton("Set BBox")
+        self.playSequenceButton = QtGui.QToolButton()
+        self.playSequenceButton.setToolTip("Play Generated Sequence")
+        self.playSequenceButton.setCheckable(False)
+        self.playSequenceButton.setShortcut(QtGui.QKeySequence("Alt+P"))
+        self.playSequenceButton.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Maximum)
+        self.playSequenceButton.setIcon(self.playIcon)
+        
+        self.autoSaveBox = QtGui.QCheckBox("Autosave")
+        self.autoSaveBox.setChecked(True)
+        
+        self.deleteSequenceButton = QtGui.QPushButton("Delete Sequence")
         
         
         ## SIGNALS ##
@@ -605,19 +788,20 @@ class Window(QtGui.QWidget):
         self.spriteListTable.currentCellChanged.connect(self.changeSprite)
         self.spriteListTable.cellPressed.connect(self.changeSprite)
         
-#         self.newSpriteButton.clicked.connect(self.createNewSprite)
-        
-#         self.deleteCurrentSpriteBBoxButton.clicked.connect(self.deleteCurrentSpriteFrameBBox)
-#         self.setCurrentSpriteBBoxButton.clicked.connect(self.setCurrentSpriteFrameBBox)
+        self.playSequenceButton.clicked.connect(self.playSequenceButtonPressed)
+        self.deleteSequenceButton.clicked.connect(self.deleteGeneratedSequence)
         
         ## LAYOUTS ##
         
         mainLayout = QtGui.QHBoxLayout()
         controlsLayout = QtGui.QVBoxLayout()
         controlsLayout.addWidget(self.spriteListTable)
-#         controlsLayout.addWidget(self.newSpriteButton)
-#         controlsLayout.addWidget(self.deleteCurrentSpriteBBoxButton)
-#         controlsLayout.addWidget(self.setCurrentSpriteBBoxButton)
+        controlsLayout.addWidget(self.drawSpritesBox)
+        controlsLayout.addWidget(self.drawBBoxBox)
+        controlsLayout.addWidget(self.drawCenterBox)
+        controlsLayout.addWidget(self.playSequenceButton)
+        controlsLayout.addWidget(self.autoSaveBox)
+        controlsLayout.addWidget(self.deleteSequenceButton)
         
         sliderLayout = QtGui.QHBoxLayout()
         sliderLayout.addWidget(self.frameIdxSlider)
@@ -643,21 +827,7 @@ class Window(QtGui.QWidget):
 
 window = Window()
 window.show()
-app.exec_() 
-
-# <codecell>
-
-np.array([0.0, 1.0])
-print np.roll(np.array([0.0, 1.0]), 1)
-print np.roll(np.array([1.0, 0.0]), 1)
-
-# <codecell>
-
-print minCostTraversal
-bob = np.empty(0, dtype=int)
-bob = np.hstack((bob[:0], minCostTraversal))
-bob = np.concatenate((bob, minCostTraversal))
-print bob
+app.exec_()
 
 # <codecell>
 
