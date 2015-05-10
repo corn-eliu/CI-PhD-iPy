@@ -730,6 +730,8 @@ if outputPath != None and not os.path.isdir(outputPath):
 if showFigs :
     figure(); imshow(bgImage)
 
+print "processing", trackedSprites[spriteIdx][DICT_SPRITE_NAME]
+
 startTime = time.time()
 for f, frameCount in zip(np.sort(trackedSprites[spriteIdx][DICT_BBOXES].keys()), xrange(len(trackedSprites[spriteIdx][DICT_BBOXES].keys()))):#[1109:1110]:#sequenceLength):
     ## get the bbox for the current sprite frame, make it larger and find the rectangular patch to work with
@@ -755,7 +757,7 @@ for f, frameCount in zip(np.sort(trackedSprites[spriteIdx][DICT_BBOXES].keys()),
     largeBBox = np.dot(np.array([[0.0, 1.0 + PATCH_BORDER, 0.0], 
                                  [0.0, 0.0, 1.0 + PATCH_BORDER]]), 
                         np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
-    ## move back tooriginal center
+    ## move back to original center
     largeBBox = np.dot(np.array([[trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][0], 1.0, 0.0], 
                                  [trackedSprites[spriteIdx][DICT_BBOX_CENTERS][f][1], 0.0, 1.0]]), 
                         np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
@@ -975,6 +977,32 @@ TR_IDX = 1
 BR_IDX = 2
 BL_IDX = 3
 
+trackedSprites = []
+for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+    trackedSprites.append(np.load(sprite).item())
+    print trackedSprites[-1][DICT_SPRITE_NAME]
+
+# <codecell>
+
+## load the tracked sprites
+DICT_SPRITE_NAME = 'sprite_name'
+# DICT_BBOX_AFFINES = 'bbox_affines'
+DICT_BBOXES = 'bboxes'
+DICT_BBOX_ROTATIONS = 'bbox_rotations'
+DICT_BBOX_CENTERS = 'bbox_centers'
+# DICT_NUM_FRAMES = 'num_frames'
+# DICT_START_FRAME = 'start_frame'
+DICT_FRAMES_LOCATIONS = 'frame_locs'
+
+dataPath = "/home/ilisescu/PhD/data/"
+dataSet = "havana/"
+formatString = "{:05d}.png"
+
+TL_IDX = 0
+TR_IDX = 1
+BR_IDX = 2
+BL_IDX = 3
+
 ## load dataSet relevant data
 frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
 numOfFrames = len(frameLocs)
@@ -986,7 +1014,7 @@ for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
     trackedSprites.append(np.load(sprite).item())
 
 ## merge tracked sprite with bg
-spriteIdx = 1
+spriteIdx = 11
 sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 showFigs = False
 
@@ -997,6 +1025,8 @@ if outputPath != None and not os.path.isdir(outputPath):
 
 if showFigs :
     figure(); imshow(bgImage)
+    
+print "processing", trackedSprites[spriteIdx][DICT_SPRITE_NAME]
 
 startTime = time.time()
 for f, frameCount in zip(np.sort(trackedSprites[spriteIdx][DICT_BBOXES].keys()), xrange(len(trackedSprites[spriteIdx][DICT_BBOXES].keys()))):#[1109:1110]:#sequenceLength):

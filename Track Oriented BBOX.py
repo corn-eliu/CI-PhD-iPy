@@ -276,6 +276,9 @@ class Window(QtGui.QWidget):
         self.centerPoint = QtCore.QPointF()
         
         self.prevPoint = None
+        self.copiedBBox = np.array([QtCore.QPointF(), QtCore.QPointF(), QtCore.QPointF(), 
+                              QtCore.QPointF(), QtCore.QPointF()])
+        self.copiedCenter = QtCore.QPointF()
         
         self.tracker = None
         self.tracking = False
@@ -703,8 +706,49 @@ class Window(QtGui.QWidget):
             self.deleteCurrentSpriteFrameBBox()
         elif e.key() == QtCore.Qt.Key_Enter :
             self.setCurrentSpriteFrameBBox()
+        elif e.key() == QtCore.Qt.Key_C and e.modifiers() & QtCore.Qt.Modifier.CTRL :
+#             print "copying bbox"
+            self.copiedBBox[TL_IDX].setX(self.bbox[TL_IDX].x())
+            self.copiedBBox[TL_IDX].setY(self.bbox[TL_IDX].y())
+            self.copiedBBox[TR_IDX].setX(self.bbox[TR_IDX].x())
+            self.copiedBBox[TR_IDX].setY(self.bbox[TR_IDX].y())
+            self.copiedBBox[BR_IDX].setX(self.bbox[BR_IDX].x())
+            self.copiedBBox[BR_IDX].setY(self.bbox[BR_IDX].y())
+            self.copiedBBox[BL_IDX].setX(self.bbox[BL_IDX].x())
+            self.copiedBBox[BL_IDX].setY(self.bbox[BL_IDX].y())
+            self.copiedBBox[-1] = self.copiedBBox[TL_IDX]
+            
+            self.copiedCenter.setX(self.centerPoint.x())
+            self.copiedCenter.setY(self.centerPoint.y())
+        elif e.key() == QtCore.Qt.Key_V and e.modifiers() & QtCore.Qt.Modifier.CTRL :
+            if self.copiedBBox != None and self.bbox != None :
+#                 print "pasting bbox"
+                self.bbox[TL_IDX].setX(self.copiedBBox[TL_IDX].x())
+                self.bbox[TL_IDX].setY(self.copiedBBox[TL_IDX].y())
+                self.bbox[TR_IDX].setX(self.copiedBBox[TR_IDX].x())
+                self.bbox[TR_IDX].setY(self.copiedBBox[TR_IDX].y())
+                self.bbox[BR_IDX].setX(self.copiedBBox[BR_IDX].x())
+                self.bbox[BR_IDX].setY(self.copiedBBox[BR_IDX].y())
+                self.bbox[BL_IDX].setX(self.copiedBBox[BL_IDX].x())
+                self.bbox[BL_IDX].setY(self.copiedBBox[BL_IDX].y())
+                self.bbox[-1] = self.bbox[TL_IDX]
+                
+                self.centerPoint.setX(self.copiedCenter.x())
+                self.centerPoint.setY(self.copiedCenter.y())
+                
+                if self.drawOverlay(False) :
+                    self.frameLabel.setOverlay(self.overlayImg)
+        elif e.key() == QtCore.Qt.Key_S and e.modifiers() & QtCore.Qt.Modifier.CTRL :
+            self.saveTrackedSprites()
             
         sys.stdout.flush()
+        
+        
+    def wheelEvent(self, e) :
+        if e.delta() < 0 :
+            self.frameIdxSpinBox.setValue(self.frameIdx-1)
+        else :
+            self.frameIdxSpinBox.setValue(self.frameIdx+1)
         
     def eventFilter(self, obj, event) :
         if obj == self.frameLabel and event.type() == QtCore.QEvent.Type.MouseMove :
@@ -812,7 +856,7 @@ class Window(QtGui.QWidget):
 
 window = Window()
 window.show()
-app.exec_() 
+app.exec_()
 
 # <codecell>
 
@@ -820,7 +864,7 @@ print min(window.trackedSprites[0][DICT_BBOXES].keys())
 
 # <codecell>
 
-window.drawOverlay().save("lalala", "png")
+window.overlayImg.save("lalala", "png")
 
 # <codecell>
 
