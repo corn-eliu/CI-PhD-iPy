@@ -241,9 +241,9 @@ def getFinalFrames(cumProb, totalFrames, correction, startFrame, loopTexture, ve
     finalFrames = finalFrames+correction
     return finalFrames
 
-def getNewFrame(currentFrame, cumProb) :
+def getNewFrame(currentFrame, cumProb, minJumpDist = 10) :
     newFrame = np.copy(currentFrame)
-    while np.abs(newFrame-currentFrame) < 10 and newFrame-currentFrame != 1 :
+    while np.abs(newFrame-currentFrame) < minJumpDist and newFrame-currentFrame != 1 :
         prob = np.random.rand(1)
         newFrame = np.round(np.sum(cumProb[currentFrame, :] < prob))
 #         print "tralal", newFrame, currentFrame, np.abs(newFrame-currentFrame) < 10, newFrame-currentFrame != 1

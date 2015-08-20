@@ -39,6 +39,106 @@ PATCH_BORDER = 0.4
 
 # <codecell>
 
+## load the tracked sprites
+DICT_SPRITE_NAME = 'sprite_name'
+# DICT_BBOX_AFFINES = 'bbox_affines'
+DICT_BBOXES = 'bboxes'
+DICT_BBOX_ROTATIONS = 'bbox_rotations'
+DICT_BBOX_CENTERS = 'bbox_centers'
+# DICT_NUM_FRAMES = 'num_frames'
+# DICT_START_FRAME = 'start_frame'
+DICT_FRAMES_LOCATIONS = 'frame_locs'
+DICT_MEDIAN_COLOR = 'median_color'
+
+dataPath = "/home/ilisescu/PhD/data/"
+dataSet = "havana/"
+# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+# dataSet = "theme_park_sunny/"
+formatString = "{:05d}.png"
+
+TL_IDX = 0
+TR_IDX = 1
+BR_IDX = 2
+BL_IDX = 3
+
+## load dataSet relevant data
+frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
+numOfFrames = len(frameLocs)
+numOfTrackedSprites = 0
+bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
+
+trackedSprites = []
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
+    trackedSprites.append(np.load(sprite).item())
+
+## merge tracked sprite with bg
+spriteIdx = 0
+sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
+
+# <codecell>
+
+bgIm = np.array(Image.open(dataPath+dataSet+"median.png"))
+
+for i in arange(len(trackedSprites)) :
+    maskDir = dataPath + dataSet + trackedSprites[i][DICT_SPRITE_NAME] + "-masked-blended"
+    
+    medianCols = []
+    count = 0
+    lenSprite = len(trackedSprites[i][DICT_FRAMES_LOCATIONS])
+    
+    for f in np.sort(trackedSprites[i][DICT_FRAMES_LOCATIONS].keys())[int(lenSprite*0.15):-int(lenSprite*0.15)] :
+        count += 1
+        frameName = trackedSprites[i][DICT_FRAMES_LOCATIONS][f].split(os.sep)[-1]
+        im = np.array(cv2.cvtColor(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), cv2.COLOR_BGRA2RGBA), dtype=np.uint8)
+#         center = np.array(trackedSprites[i][DICT_BBOX_CENTERS][f], dtype=int)[::-1]
+#         squarePadding = 20
+#         rows = np.ndarray.flatten(arange((center[0])-squarePadding, 
+#                                          (center[0])+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
+#         cols = np.ndarray.flatten(arange((center[1])-squarePadding, 
+#                                          (center[1])+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
+        
+#         medianCols.append(np.median(im[rows, cols, :-1], axis=0))
+        
+#         visiblePixels = np.argwhere(im[:, :, -1] != 0)
+#         medianCols.append(np.mean(im[visiblePixels[:, 0], visiblePixels[:, 1], :-1], axis=0))
+
+        diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
+        relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
+    
+        medianCols.append(np.mean(im[relevantPixels[:, 0], relevantPixels[:, 1], :-1], axis=0))
+        
+        sys.stdout.write('\r' + "Processed image " + np.string_(count) + " (" + np.string_(len(trackedSprites[i][DICT_FRAMES_LOCATIONS])) + ")")
+        sys.stdout.flush()
+    
+    medianRGB = np.median(np.array(medianCols), axis=0)
+    normed = medianRGB/np.linalg.norm(medianRGB)
+    
+    trackedSprites[i][DICT_MEDIAN_COLOR] = np.array(255/np.max(normed)*normed, dtype=int)
+    
+    print 
+    print dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i][DICT_MEDIAN_COLOR]
+    np.save(dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i])
+
+# <codecell>
+
+# print im.shape
+# print np.median(np.array(medianCols), axis=0)
+# imshow(im[rows, cols, :-1].reshape((5, 5, 3)))
+figure(); imshow(im)
+figure(); imshow(bgIm)
+diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
+relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
+gwv.showCustomGraph(diffIm/np.max(diffIm)> 0.5)
+
+# <codecell>
+
+print rows
+print cols
+
+# <codecell>
+
 def multivariateNormal(data, mean, var, normalized = True) :
     if (data.shape[0] != mean.shape[0] or np.any(data.shape[0] != np.array(var.shape)) 
         or len(var.shape) != 2 or var.shape[0] != var.shape[1]) :
@@ -714,7 +814,7 @@ numOfTrackedSprites = 0
 bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
 
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 
 ## merge tracked sprite with bg
@@ -968,8 +1068,10 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 # DICT_START_FRAME = 'start_frame'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 
-dataPath = "/home/ilisescu/PhD/data/"
-dataSet = "havana/"
+# dataPath = "/home/ilisescu/PhD/data/"
+# dataSet = "havana/"
+dataPath = "/media/ilisescu/Data1/PhD/data/"
+dataSet = "clouds_subsample10/"
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -978,7 +1080,7 @@ BR_IDX = 2
 BL_IDX = 3
 
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
     print trackedSprites[-1][DICT_SPRITE_NAME]
 
@@ -994,8 +1096,12 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 # DICT_START_FRAME = 'start_frame'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 
-dataPath = "/home/ilisescu/PhD/data/"
-dataSet = "havana/"
+# dataPath = "/home/ilisescu/PhD/data/"
+# dataSet = "havana/"
+dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+dataSet = "theme_park_sunny/"
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -1010,11 +1116,11 @@ numOfTrackedSprites = 0
 bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
 
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 
 ## merge tracked sprite with bg
-spriteIdx = 11
+spriteIdx = 0
 sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 showFigs = False
 

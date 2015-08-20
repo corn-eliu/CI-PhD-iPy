@@ -21,7 +21,57 @@ import re
 import sys
 import os
 
-dataFolder = "/home/ilisescu/PhD/data/"
+# dataFolder = "/home/ilisescu/PhD/data/"
+dataFolder = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+dataSet = "theme_park_sunny/"
+
+# <codecell>
+
+figure(); imshow(np.load(dataFolder+"Videos/6489810.avi_distanceMatrix.npy"), interpolation='nearest')
+
+# <codecell>
+
+frameLocs = np.sort(glob.glob(dataFolder + dataSet + "/frame-*.png"))
+frameSize = np.array(Image.open(frameLocs[0])).shape[0:2]
+numOfFrames = len(frameLocs)
+print numOfFrames, frameSize
+medianImage = np.zeros((frameSize[0], frameSize[1], 3), dtype=np.uint8)
+
+# <headingcell level=2>
+
+# COMPUTE IMAGE MEDIAN
+
+# <codecell>
+
+allFrames = np.zeros((frameSize[0], frameSize[1], numOfFrames), dtype=np.uint8)
+channel = 2
+for i in xrange(len(frameLocs)) :
+    allFrames[:, :, i] = np.array(Image.open(frameLocs[i]))[:, :, channel]
+    if np.mod(i, 100) == 0 :
+        sys.stdout.write('\r' + "Loaded image " + np.string_(i) + " (" + np.string_(len(frameLocs)) + ")")
+        sys.stdout.flush()
+
+# <codecell>
+
+medianImage[:, :, channel] = np.median(allFrames, axis=-1)
+
+# <codecell>
+
+figure(); imshow(medianImage)
+
+# <codecell>
+
+Image.fromarray(np.array(medianImage, dtype=np.uint8)).save(dataFolder + dataSet + "median.png")
+
+# <codecell>
+
+figure(); imshow(np.array(tmp, dtype=np.uint8))
+
+# <headingcell level=2>
+
+# RENDER SPRITE ON BACKGROUND
 
 # <codecell>
 

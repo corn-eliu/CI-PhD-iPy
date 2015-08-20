@@ -21,16 +21,20 @@ import matplotlib.animation as animation
 
 import GraphWithValues as gwv
 
-dataFolder = "/home/ilisescu/PhD/data/"
+# dataFolder = "/home/ilisescu/PhD/data/"
+dataFolder = "/media/ilisescu/Data1/PhD/data/"
 
 # <codecell>
 
 ## read frames from sequence of images
 # sampleData = "pendulum/"
-sampleData = "ribbon2/"
+# sampleData = "ribbon2/"
 # sampleData = "ribbon1_matted/"
 # sampleData = "little_palm1_cropped/"
 # sampleData = "ballAnimation/"
+sampleData = "candle1/segmentedAndCropped/"
+sampleData = "candle2/subset_stabilized/segmentedAndCropped/"
+sampleData = "candle3/stabilized/segmentedAndCropped/"
 outputData = dataFolder+sampleData
 
 ## Find pngs in sample data
@@ -77,7 +81,7 @@ def distEuc2(f1, f2) :
 
 ## divide data into subblocks
 s = time.time()
-numBlocks = 20
+numBlocks = 8
 blockSize = numFrames/numBlocks
 print numFrames, numBlocks, blockSize
 distanceMatrix = np.zeros([numFrames, numFrames])
@@ -90,7 +94,7 @@ for i in xrange(0, numBlocks) :
     f1s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
     for f, idx in zip(xrange(i*blockSize, i*blockSize+blockSize), xrange(0, blockSize)) :
         img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-        if os.path.isfile(mattes[f]) :
+        if f < len(mattes) and os.path.isfile(mattes[f]) :
             alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
             f1s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
         else :
@@ -113,7 +117,7 @@ for i in xrange(0, numBlocks) :
         f2s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
         for f, idx in zip(xrange(j*blockSize, j*blockSize+blockSize), xrange(0, blockSize)) :
             img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-            if os.path.isfile(mattes[f]) :
+            if f < len(mattes) and os.path.isfile(mattes[f]) :
                 alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
                 f2s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
             else :
@@ -132,6 +136,10 @@ for i in xrange(0, numBlocks) :
 figure(); imshow(distanceMatrix, interpolation='nearest')
 print
 print "finished in", time.time() - s
+
+# <codecell>
+
+np.save(dataFolder+sampleData+"vanilla_distMat.npy", distanceMatrix)
 
 # <codecell>
 

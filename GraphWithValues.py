@@ -9,7 +9,7 @@ import numpy as np
 
 # <codecell>
 
-def showCustomGraph(img, title = None, integerAxes = True) :
+def showCustomGraph(img, title = None, showColorbar = False, integerAxes = True) :
     
     if title != None :
         fig = plt.figure(title)
@@ -17,7 +17,7 @@ def showCustomGraph(img, title = None, integerAxes = True) :
         fig = plt.figure()
     
     ax = fig.add_subplot(111)
-    ax.imshow(img, interpolation='nearest')
+    cax = ax.imshow(img, interpolation='nearest')
     
     numrows, numcols = img.shape
     def format_coord(x, y):
@@ -36,5 +36,9 @@ def showCustomGraph(img, title = None, integerAxes = True) :
                 return 'x=%1.4f, y=%1.4f'%(x, y)
     
     ax.format_coord = format_coord
+    
+    if showColorbar :
+        cax = fig.colorbar(cax)
+    
     plt.show()
 

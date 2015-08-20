@@ -24,13 +24,14 @@ from scipy import stats
 
 from tsne import tsne
 
-from _emd import emd
+# from _emd import emd
 
 import GraphWithValues as gwv
 import VideoTexturesUtils as vtu
 import ComputeGridFeatures as cgf
 
-dataFolder = "/home/ilisescu/PhD/data/"
+# dataFolder = "/home/ilisescu/PhD/data/"
+dataFolder = "/media/ilisescu/Data1/PhD/data/"
 
 app = QtGui.QApplication(sys.argv)
 

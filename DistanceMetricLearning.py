@@ -211,7 +211,9 @@ def getFullRGBFeats(imageData) :
     return feats
 
 def getHOGFeats(imageData) :
-    """Take RGB imageData and compute HOG features
+    """Take RGB imageData and compute HOG features. The returned features are flattened to a 1D array from an array of shape
+        (len(feats)/orientations, orientations) where the first orientations number of values represent the hog features of the
+        top left cell and then counting cells right row-wise (i.e. do first row left to right, then second and so on)
     
            imageData: input RGB image data
            
@@ -403,7 +405,7 @@ def fitKmeansClusterer(trainingFeats, bins) :
            
         return: kmeans clusterer"""
     
-    clusterer = KMeans(n_clusters=bins, n_jobs=6)
+    clusterer = KMeans(n_clusters=bins, n_jobs= 6)
     clusterer.fit(trainingFeats)
     return clusterer
 
@@ -1329,7 +1331,7 @@ class Window(QtGui.QWidget):
                     alphaMatte = np.reshape(alphaMatte, np.hstack((alphaMatte.shape[0:2], 1)))
                     self.setTextureFrame(np.concatenate((cv2.imread(frames[frameIdx]), alphaMatte), axis=-1), True)
                 else :
-                    self.textureViewerGroup.setTextureFrame(cv2.imread(frames[frameIdx], False))
+                    self.setTextureFrame(cv2.imread(frames[frameIdx]), False)
                     
                 if self.currentVisFrame == 6 :
                     self.movieInfo.setStyleSheet(self.labelJumpStyle)
