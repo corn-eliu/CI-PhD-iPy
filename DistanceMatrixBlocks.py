@@ -16,31 +16,40 @@ import gc
 from scipy import ndimage
 from scipy import stats
 
+from PIL import Image
+
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 
 import GraphWithValues as gwv
 
-dataFolder = "/home/ilisescu/PhD/data/"
+# dataFolder = "/home/ilisescu/PhD/data/"
+dataFolder = "/media/ilisescu/Data1/PhD/data/"
 
 # <codecell>
 
 ## read frames from sequence of images
 # sampleData = "pendulum/"
-sampleData = "ribbon2/"
+# sampleData = "ribbon2/"
 # sampleData = "ribbon1_matted/"
 # sampleData = "little_palm1_cropped/"
 # sampleData = "ballAnimation/"
+sampleData = "candle1/segmentedAndCropped/"
+sampleData = "candle2/subset_stabilized/segmentedAndCropped/"
+sampleData = "candle3/stabilized/segmentedAndCropped/"
+sampleData = "wave2/"
+sampleData = "toy/"
+
 outputData = dataFolder+sampleData
 
 ## Find pngs in sample data
-frames = glob.glob(dataFolder + sampleData + "frame-*.png")
-mattes = glob.glob(dataFolder + sampleData + "matte-*.png")
-frames = np.sort(frames)
-mattes = np.sort(mattes)#[0:len(frames)-10]
+frames = np.sort(glob.glob(dataFolder + sampleData + "frame-*.png"))
+mattes = np.sort(glob.glob(dataFolder + sampleData + "matte-*.png"))
+sprite = "aron2"
+segmented = np.sort(glob.glob(dataFolder + sampleData + sprite+"-maskedFlow/frame-*.png"))
 numFrames = len(frames)
 frameSize = cv2.imread(frames[0]).shape
-print numFrames, len(mattes)
+print numFrames, len(mattes), len(segmented)
 
 # <codecell>
 
@@ -77,7 +86,7 @@ def distEuc2(f1, f2) :
 
 ## divide data into subblocks
 s = time.time()
-numBlocks = 20
+numBlocks = 2
 blockSize = numFrames/numBlocks
 print numFrames, numBlocks, blockSize
 distanceMatrix = np.zeros([numFrames, numFrames])
@@ -89,12 +98,16 @@ for i in xrange(0, numBlocks) :
     ##load row frames
     f1s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
     for f, idx in zip(xrange(i*blockSize, i*blockSize+blockSize), xrange(0, blockSize)) :
-        img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-        if os.path.isfile(mattes[f]) :
-            alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
-            f1s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
+        img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float64)
+        if f < len(segmented) and os.path.isfile(segmented[f]) :
+            alpha = np.array(Image.open(segmented[f]), dtype=np.float64)[:, :, -1]/255.0
+            f1s[:, :, :, idx] = (img/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))
         else :
-            f1s[:, :, :, idx] = img/255.0
+            if f < len(mattes) and os.path.isfile(mattes[f]) :
+                alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float64)/255.0
+                f1s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
+            else :
+                f1s[:, :, :, idx] = img/255.0
 
     ##compute distance between every pair of row frames
     data1 = np.reshape(f1s, [np.prod(f1s.shape[0:-1]), f1s.shape[-1]]).T
@@ -112,13 +125,17 @@ for i in xrange(0, numBlocks) :
         ##load column frames
         f2s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
         for f, idx in zip(xrange(j*blockSize, j*blockSize+blockSize), xrange(0, blockSize)) :
-            img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-            if os.path.isfile(mattes[f]) :
-                alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
-                f2s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
+            img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float64)
+            if f < len(segmented) and os.path.isfile(segmented[f]) :
+                alpha = np.array(Image.open(segmented[f]), dtype=np.float64)[:, :, -1]/255.0
+                f2s[:, :, :, idx] = (img/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))
             else :
-                f2s[:, :, :, idx] = img/255.0
-#             f2s[:, :, :, idx] = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB))/255.0
+                if f < len(mattes) and os.path.isfile(mattes[f]) :
+                    alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float64)/255.0
+                    f2s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
+                else :
+                    f2s[:, :, :, idx] = img/255.0
+    #             f2s[:, :, :, idx] = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB))/255.0
             
         ##compute distance between every pair of row-column frames
         data2 = np.reshape(f2s, [np.prod(f2s.shape[0:-1]), f2s.shape[-1]]).T
@@ -132,6 +149,10 @@ for i in xrange(0, numBlocks) :
 figure(); imshow(distanceMatrix, interpolation='nearest')
 print
 print "finished in", time.time() - s
+
+# <codecell>
+
+np.save(dataFolder+sampleData+"toy1-vanilla_distMat.npy", distanceMatrix)
 
 # <codecell>
 

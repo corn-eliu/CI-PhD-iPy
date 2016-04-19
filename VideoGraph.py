@@ -19,7 +19,7 @@ from pygraph.classes.graph import graph
 from pygraph.readwrite.dot import write
 from pygraph.algorithms.minmax import shortest_path
 
-import pygraphviz as gv
+# import pygraphviz as gv
 
 import VideoTexturesUtils as vtu
 import GraphWithValues as gwv
@@ -437,8 +437,8 @@ figure(); imshow(distMat, interpolation='nearest')
 
 # <codecell>
 
-weighMat = distMatFut
-# weightMat = distMat[1:distMat.shape[1], 0:-1]
+# weightMat = distMatFut
+weightMat = distMat[1:distMat.shape[1], 0:-1]
 # weightMat = distMat[0:-1, 1:distMat.shape[1]]
 figure(); imshow(weightMat, interpolation='nearest')
 
@@ -468,8 +468,8 @@ figure(); plot(arange(0, len(rangeCurves)), rangeCurves)
 print rangeCurves
 
 
-# frameGraph = buildGraph(initialNodes, weightMat, rangeCurves, 1, 3, (1, 1), True, None)
-frameGraph = buildGraph(initialNodes, 1.0/probMat, rangeCurves, 1, 3, (10, 100), False, None)
+frameGraph = buildGraph(initialNodes, weightMat, rangeCurves, 1, 3, (1, 1), True, None)
+# frameGraph = buildGraph(initialNodes, 1.0/probMat, rangeCurves, 1, 3, (10, 100), False, None)
 
 print
 print len(frameGraph.nodes()), frameGraph.nodes()

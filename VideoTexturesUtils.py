@@ -58,9 +58,10 @@ def distEuc(f) :
 # <codecell>
 
 ## Turn distances to probabilities
-def dist2prob(dM, sigmaMult, normalize) :
+def dist2prob(dM, sigmaMult, normalize, verbose=False) :
     sigma = sigmaMult*np.mean(dM[np.nonzero(dM)])
-    print 'sigma', sigma
+    if verbose :
+        print 'sigma', sigma
     pM = np.exp((-dM)/sigma)
 ## normalize probabilities row-wise
     if normalize :
@@ -70,9 +71,10 @@ def dist2prob(dM, sigmaMult, normalize) :
     return pM
 
 ## Turn distances with extra range constraint to probabilities
-def rangedist2prob(dM, sigmaMult, rangeDist, normalize) :
+def rangedist2prob(dM, sigmaMult, rangeDist, normalize, verbose=False) :
     sigma = sigmaMult*np.mean(dM[np.nonzero(dM)])
-    print 'sigma', sigma
+    if verbose :
+        print 'sigma', sigma
     pM = np.exp(-(dM/sigma+ rangeDist))
 ## normalize probabilities row-wise
     if normalize :
@@ -188,15 +190,16 @@ def estimateFutureCost(alpha, p, distanceMatrixFilt) :
 
 # <codecell>
 
-def getProbabilities(distMat, sigmaMult, rangeDist, normalizeRows) :
+def getProbabilities(distMat, sigmaMult, rangeDist, normalizeRows, verbose=False) :
     ## compute probabilities from distanceMatrix and the cumulative probabilities
     if rangeDist == None :
-        probabilities = dist2prob(distMat, sigmaMult, normalizeRows)
+        probabilities = dist2prob(distMat, sigmaMult, normalizeRows, verbose)
     else :
-        probabilities = rangedist2prob(distMat, sigmaMult, rangeDist, normalizeRows)
+        probabilities = rangedist2prob(distMat, sigmaMult, rangeDist, normalizeRows, verbose)
     # since the probabilities are normalized on each row, the right most column will be all ones
     cumProb = np.cumsum(probabilities, axis=1)
-    print probabilities.shape, cumProb.shape
+    if verbose :
+        print probabilities.shape, cumProb.shape
     
     return probabilities, cumProb
 
@@ -241,9 +244,9 @@ def getFinalFrames(cumProb, totalFrames, correction, startFrame, loopTexture, ve
     finalFrames = finalFrames+correction
     return finalFrames
 
-def getNewFrame(currentFrame, cumProb) :
+def getNewFrame(currentFrame, cumProb, minJumpDist = 10) :
     newFrame = np.copy(currentFrame)
-    while np.abs(newFrame-currentFrame) < 10 and newFrame-currentFrame != 1 :
+    while np.abs(newFrame-currentFrame) < minJumpDist and newFrame-currentFrame != 1 :
         prob = np.random.rand(1)
         newFrame = np.round(np.sum(cumProb[currentFrame, :] < prob))
 #         print "tralal", newFrame, currentFrame, np.abs(newFrame-currentFrame) < 10, newFrame-currentFrame != 1

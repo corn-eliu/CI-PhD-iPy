@@ -46,42 +46,43 @@ BL_IDX = 3
 # <codecell>
 
 precomputedDistances = np.load(dataPath + dataSet + "precomputedDistances.npy").item()
-## load 
-trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
-    trackedSprites.append(np.load(sprite).item())
+preloadedSpritePatches = list(np.load(dataPath + dataSet + "preloadedSpritePatches.npy"))
+# ## load 
+# trackedSprites = []
+# for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+#     trackedSprites.append(np.load(sprite).item())
     
-## load all sprite patches
-preloadedSpritePatches = []
-currentSpriteImages = []
-del preloadedSpritePatches
-preloadedSpritePatches = []
-for sprite in trackedSprites :
-    maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked"
-    del currentSpriteImages
-    currentSpriteImages = []
-    for frameKey in np.sort(sprite[DICT_FRAMES_LOCATIONS].keys()) :
-        frameName = sprite[DICT_FRAMES_LOCATIONS][frameKey].split(os.sep)[-1]
+# ## load all sprite patches
+# preloadedSpritePatches = []
+# currentSpriteImages = []
+# del preloadedSpritePatches
+# preloadedSpritePatches = []
+# for sprite in trackedSprites :
+#     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked"
+#     del currentSpriteImages
+#     currentSpriteImages = []
+#     for frameKey in np.sort(sprite[DICT_FRAMES_LOCATIONS].keys()) :
+#         frameName = sprite[DICT_FRAMES_LOCATIONS][frameKey].split(os.sep)[-1]
         
-        if os.path.isdir(maskDir) and os.path.exists(maskDir+"/"+frameName) :
-            im = np.array(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), dtype=np.uint8)
+#         if os.path.isdir(maskDir) and os.path.exists(maskDir+"/"+frameName) :
+#             im = np.array(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), dtype=np.uint8)
             
-            visiblePixels = np.argwhere(im[:, :, -1] != 0)
-            topLeft = np.min(visiblePixels, axis=0)
-            patchSize = np.max(visiblePixels, axis=0) - topLeft + 1
+#             visiblePixels = np.argwhere(im[:, :, -1] != 0)
+#             topLeft = np.min(visiblePixels, axis=0)
+#             patchSize = np.max(visiblePixels, axis=0) - topLeft + 1
             
-            currentSpriteImages.append({'top_left_pos':topLeft, 'sprite_colors':im[visiblePixels[:, 0], visiblePixels[:, 1], :], 
-                                        'visible_indices': visiblePixels-topLeft, 'patch_size': patchSize})
-#             currentSpriteImages.append(im[topLeft[0]:topLeft[0]+patchSize[0]+1, topLeft[1]:topLeft[1]+patchSize[1]+1])
-        else :
-#             im = np.ascontiguousarray(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameIdx]), dtype=np.uint8)
-            currentSpriteImages.append(None)
+#             currentSpriteImages.append({'top_left_pos':topLeft, 'sprite_colors':im[visiblePixels[:, 0], visiblePixels[:, 1], :], 
+#                                         'visible_indices': visiblePixels-topLeft, 'patch_size': patchSize})
+# #             currentSpriteImages.append(im[topLeft[0]:topLeft[0]+patchSize[0]+1, topLeft[1]:topLeft[1]+patchSize[1]+1])
+#         else :
+# #             im = np.ascontiguousarray(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameIdx]), dtype=np.uint8)
+#             currentSpriteImages.append(None)
         
-        sys.stdout.write('\r' + "Loaded image " + np.string_(len(currentSpriteImages)) + " (" + np.string_(len(sprite[DICT_FRAMES_LOCATIONS])) + ")")
-        sys.stdout.flush()
-    preloadedSpritePatches.append(np.copy(currentSpriteImages))
-    print
-    print "done with sprite", sprite[DICT_SPRITE_NAME]
+#         sys.stdout.write('\r' + "Loaded image " + np.string_(len(currentSpriteImages)) + " (" + np.string_(len(sprite[DICT_FRAMES_LOCATIONS])) + ")")
+#         sys.stdout.flush()
+#     preloadedSpritePatches.append(np.copy(currentSpriteImages))
+#     print
+#     print "done with sprite", sprite[DICT_SPRITE_NAME]
 
 # <codecell>
 
@@ -386,6 +387,16 @@ def solveSparseDynProgMRF(unaryCosts, pairwiseCosts, nodesConnectedToLabel) :
 
 # <codecell>
 
+tmp = list([0, 6, 72, 23, 65, 89])
+
+print tmp
+
+tmp = [tmp[x] for x in xrange(len(tmp)) if tmp[x] > 30]
+
+print tmp
+
+# <codecell>
+
 class ImageLabel(QtGui.QLabel) :
     
     def __init__(self, text, parent=None):
@@ -435,6 +446,8 @@ class Window(QtGui.QWidget):
         self.playIcon = QtGui.QIcon("play.png")
         self.pauseIcon = QtGui.QIcon("pause.png")
         self.doPlay = False
+        self.needNewSprite = True
+        self.numTriesToSpawn = 0
         
         self.createGUI()
         
@@ -523,40 +536,44 @@ class Window(QtGui.QWidget):
         if self.isDirty :
 #             self.showFrame(idx)
             self.showFrame(0)
-            
-        for s in xrange(len(self.precomputedSequence)) :
-            ## index in self.trackedSprites of current sprite in self.precomputedSequence
-            spriteIdx = self.precomputedSequence[s][DICT_SPRITE_IDX]
-            ## index of current sprite frame to visualize
-            sequenceFrameIdx = self.precomputedSequence[s][DICT_SEQUENCE_FRAMES][0]-1
-            ## -1 stands for not shown or eventually for more complicated sprites as the base frame to keep showing when sprite is frozen
-            ## really in the sequence I have 0 for the static frame but above I do -1
-            if sequenceFrameIdx >= 0 :
-                ## the trackedSprites data is indexed (i.e. the keys) by the frame indices in the original full sequence and keys are not sorted
-                frameToShowIdx = np.sort(self.trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())[sequenceFrameIdx]
+        
+        if self.doPlay :
+            for s in xrange(len(self.precomputedSequence)) :
+                ## index in self.trackedSprites of current sprite in self.precomputedSequence
+                spriteIdx = self.precomputedSequence[s][DICT_SPRITE_IDX]
+                ## index of current sprite frame to visualize
+                sequenceFrameIdx = self.precomputedSequence[s][DICT_SEQUENCE_FRAMES][0]-1
+                ## -1 stands for not shown or eventually for more complicated sprites as the base frame to keep showing when sprite is frozen
+                ## really in the sequence I have 0 for the static frame but above I do -1
+                if sequenceFrameIdx >= 0 :
+                    ## the trackedSprites data is indexed (i.e. the keys) by the frame indices in the original full sequence and keys are not sorted
+                    frameToShowIdx = np.sort(self.trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())[sequenceFrameIdx]
+
+                    bbox = self.trackedSprites[spriteIdx][DICT_BBOXES][frameToShowIdx]
+                    bbox = np.vstack((bbox, bbox[0, :]))
+                    if cv2.pointPolygonTest(np.array(bbox, dtype=np.float32), (self.playerPos[0], self.playerPos[1]), False) >= 0 :
+                        self.frameInfo.setText("You Died !!!")
+                        self.playButton.click()
+                        self.restartGame()
+                        return None
+
+            if np.linalg.norm(self.playerPos-self.goalPoint) < 21.0 :
+                self.frameInfo.setText("You Win !!!")
+                self.playButton.click()
+                self.restartGame()
+
+            ## delete first frame of each sequence
+            for s in xrange(len(self.precomputedSequence)) :
+                self.precomputedSequence[s][DICT_SEQUENCE_FRAMES] = self.precomputedSequence[s][DICT_SEQUENCE_FRAMES][1:]
+                self.precomputedSequence[s][DICT_DESIRED_SEMANTICS] = self.precomputedSequence[s][DICT_DESIRED_SEMANTICS][1:]
+
+            ## delete all sprites that have only frame 0 in their sequence
+            self.precomputedSequence = [self.precomputedSequence[s] for s in xrange(len(self.precomputedSequence)) if np.sum(self.precomputedSequence[s][DICT_SEQUENCE_FRAMES]) != 0]
+
+            if len(self.precomputedSequence) > 0 and len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES]) < self.EXTEND_LENGTH :
+                self.extendFullSequence(self.EXTEND_LENGTH, len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES])-1)
                 
-                bbox = self.trackedSprites[spriteIdx][DICT_BBOXES][frameToShowIdx]
-                bbox = np.vstack((bbox, bbox[0, :]))
-                if cv2.pointPolygonTest(np.array(bbox, dtype=np.float32), (self.playerPos[0], self.playerPos[1]), False) >= 0 :
-                    self.frameInfo.setText("You Died !!!")
-                    self.playButton.click()
-                    self.restartGame()
-                
-        if np.linalg.norm(self.playerPos-self.goalPoint) < 21.0 :
-            self.frameInfo.setText("You Win !!!")
-            self.playButton.click()
-            self.restartGame()
-            
-        ## delete first frame of each sequence
-        for s in xrange(len(self.precomputedSequence)) :
-            self.precomputedSequence[s][DICT_SEQUENCE_FRAMES] = self.precomputedSequence[s][DICT_SEQUENCE_FRAMES][1:]
-            self.precomputedSequence[s][DICT_DESIRED_SEMANTICS] = self.precomputedSequence[s][DICT_DESIRED_SEMANTICS][1:]
-            
-        if len(self.precomputedSequence) > 0 and len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES]) < self.EXTEND_LENGTH :
-            self.extendFullSequence(self.EXTEND_LENGTH, len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES])-1)
-            
-            self.spriteToSpawnIdx = random.choice(arange(len(window.trackedSprites)))
-            self.spawnSprite()
+                self.spawnSprite()
             
                 
         self.isDirty = False
@@ -588,10 +605,10 @@ class Window(QtGui.QWidget):
 #                         print "tralala", sequenceFrameIdx, self.frameIdx, s
 #                         print "drawing preloaded"
                         self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, True, 
-                                         False, True, False, preloadedSpritePatches[spriteIdx][sequenceFrameIdx])
+                                         False, False, False, preloadedSpritePatches[spriteIdx][sequenceFrameIdx])
                     else :
 #                         print "loading image"
-                        self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, True, False, True, False)
+                        self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, True, False, False, False)
                     
 #                     self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
 #                                      self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked())
@@ -709,7 +726,7 @@ class Window(QtGui.QWidget):
 
                     isSpriteCompatible = self.checkIsCompatible(sprite, spriteIdx, minCostTraversal, competingSequences)
                 else :
-                    print "done"
+#                     print "done"
                     break
                 count += 1
                     
@@ -756,14 +773,14 @@ class Window(QtGui.QWidget):
                 pairingShift = frameRanges[sortIdxs, 0][1]-frameRanges[sortIdxs, 0][0]
                 totalDistance = precomputedDistances[pairing][pairingShift]
         
-                print "lala", totalDistance, precomputedDistances[pairing][pairingShift], spriteIdxs, pairing, pairingShift, spriteIdx, frameRanges[sortIdxs, 0]
+#                 print "lala", totalDistance, precomputedDistances[pairing][pairingShift], spriteIdxs, pairing, pairingShift, spriteIdx, frameRanges[sortIdxs, 0]
                 
                 ## find all pairs of frame that show the same label as the desired label (i.e. [0.0, 1.0])
                 tmp = np.all(overlappingSpriteSemanticLabels[overlappingSpriteSequence] == spriteSemanticLabels[spriteSequence], axis=1)
                 if totalDistance > 5.0 : 
                     areSpritesCompatible[np.all((np.all(spriteSemanticLabels[spriteSequence] == np.array([0.0, 1.0]), axis=1), tmp), axis=0)] = True
-            else :
-                print "sprites not overlapping"
+#             else :
+#                 print "sprites not overlapping"
             
             isSpriteCompatible = np.all((isSpriteCompatible, areSpritesCompatible), axis=0)
                     
@@ -819,8 +836,13 @@ class Window(QtGui.QWidget):
     
     def spawnSprite(self) :
         
+        if self.needNewSprite :
+            self.spriteToSpawnIdx = random.choice(arange(len(window.trackedSprites)))
+        
         if self.spriteToSpawnIdx >= 0 and self.spriteToSpawnIdx < len(self.trackedSprites) :
-            print "spawning sprite", self.trackedSprites[self.spriteToSpawnIdx][DICT_SPRITE_NAME]
+            sys.stdout.write('\r' +  "trying to spawn sprite " + self.trackedSprites[self.spriteToSpawnIdx][DICT_SPRITE_NAME])
+            sys.stdout.flush()
+#             print "trying to spawn sprite", self.trackedSprites[self.spriteToSpawnIdx][DICT_SPRITE_NAME],
             ## spawn new sprite
 #             self.addNewSpriteTrackToSequence(self.spriteToSpawnIdx)
             self.spriteToSpawn = {
@@ -838,10 +860,14 @@ class Window(QtGui.QWidget):
             tic = time.time()
             spriteSequence = self.getOptimizedSequence(self.trackedSprites[self.spriteToSpawnIdx], self.spriteToSpawnIdx, 
                                                        self.precomputedSequence, desiredSemantics, 0, resolveCompatibility = True)
-            print "1", time.time() - tic
+#             print "1", time.time() - tic
             
             tic = time.time()
             if spriteSequence != None :
+                print ",", self.numTriesToSpawn+1, "SPAWNED"; sys.stdout.flush()
+                self.numTriesToSpawn = 0
+                self.needNewSprite = True
+#                 print "spawned sprite", self.trackedSprites[self.spriteToSpawnIdx][DICT_SPRITE_NAME]
                 ## update dictionary
                 # don't take the first frame of the spriteSequence as it would just repeat the last seen frame
                 self.spriteToSpawn[DICT_SEQUENCE_FRAMES] = np.hstack((self.spriteToSpawn[DICT_SEQUENCE_FRAMES], spriteSequence[1:]))
@@ -867,16 +893,25 @@ class Window(QtGui.QWidget):
                 additionalFrames = len(self.precomputedSequence[-1][DICT_SEQUENCE_FRAMES]) - len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES])
                 if additionalFrames < 0 :
                     ## extend new sprite's sequence to match total sequence's length
-                    print "extending new sprite's sequence by", -additionalFrames+1
+#                     print "extending new sprite's sequence by", -additionalFrames+1
                     self.extendPrecomputedSequence(len(self.precomputedSequence)-1, -additionalFrames+1, 
                                                    len(self.precomputedSequence[-1][DICT_SEQUENCE_FRAMES])-1)
                     
                 elif additionalFrames > 0 :
                     ## extend existing sprites' sequences to match the new total sequence's length because of newly added sprite
-                    print "extending existing sprites' sequences by", additionalFrames+1
+#                     print "extending existing sprites' sequences by", additionalFrames+1
                     self.leaveOneOutExtension(len(self.precomputedSequence)-1, additionalFrames+1, 
                                               len(self.precomputedSequence[0][DICT_SEQUENCE_FRAMES])-1)
-            print "2", time.time() - tic
+#             print "2", time.time() - tic
+            else :
+                self.numTriesToSpawn += 1
+                if self.numTriesToSpawn > 5 :
+                    self.numTriesToSpawn = 0
+                    self.needNewSprite = True
+                else :
+                    self.needNewSprite = False
+                sys.stdout.write('\r' +  "trying to spawn sprite " + self.trackedSprites[self.spriteToSpawnIdx][DICT_SPRITE_NAME] + ", " + np.string_(self.numTriesToSpawn))
+                sys.stdout.flush()
                 
 
     def extendFullSequence(self, extensionLength, startFrame) :
@@ -940,7 +975,7 @@ class Window(QtGui.QWidget):
     def loadTrackedSprites(self) :
         ## going to first frame of first sprite if there were no sprites before loading
 #         goToNewSprite = len(self.trackedSprites) == 0
-        for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+        for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
             self.trackedSprites.append(np.load(sprite).item())
             
     def closeEvent(self, event) :
@@ -1042,7 +1077,6 @@ class Window(QtGui.QWidget):
             self.doPlay = True
             self.playButton.setIcon(self.pauseIcon)
             
-        self.spriteToSpawnIdx = random.choice(arange(len(window.trackedSprites)))
         self.spawnSprite()
         
 #         self.renderOneFrame()
@@ -1100,6 +1134,10 @@ class Window(QtGui.QWidget):
 window = Window()
 window.show()
 app.exec_()
+
+# <codecell>
+
+print window.trackedSprites[2][DICT_SPRITE_NAME]
 
 # <codecell>
 

@@ -34,9 +34,19 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 # DICT_NUM_FRAMES = 'num_frames'
 # DICT_START_FRAME = 'start_frame'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
+DICT_MEDIAN_COLOR = 'median_color'
+
+DRAW_FIRST_FRAME = 'first_frame'
+DRAW_LAST_FRAME = 'last_frame'
+DRAW_COLOR = 'color'
 
 dataPath = "/home/ilisescu/PhD/data/"
 dataSet = "havana/"
+# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"#"clouds/"
+# dataSet = "theme_park_cloudy/"
+# dataSet = "theme_park_sunny/"
+# dataSet = "candle2/"
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -50,6 +60,29 @@ BL_IDX = 3
 frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
 numOfFrames = len(frameLocs)
 numOfTrackedSprites = 0
+print numOfFrames
+
+# <codecell>
+
+###### THIS CAN BE USED TO TRANSFER TRACKING INFO FROM ONE SPRITE TO ANOTHER
+# oldTrack = np.load(np.sort(glob.glob(dataPath + "theme_park_cloudy/sprite*.npy"))[0]).item()
+# print oldTrack.keys()
+# newTrack = {
+#                DICT_SPRITE_NAME:u'roller_coaster1',
+#                DICT_BBOXES:{},
+#                DICT_BBOX_CENTERS:{},
+#                DICT_BBOX_ROTATIONS:{},
+#                DICT_FRAMES_LOCATIONS:{}
+#            }
+
+# delta = 507 - 1112
+# for frameIdx in np.sort(oldTrack[DICT_FRAMES_LOCATIONS].keys()) :
+#     newTrack[DICT_BBOXES][frameIdx+delta] = oldTrack[DICT_BBOXES][frameIdx]
+#     newTrack[DICT_BBOX_CENTERS][frameIdx+delta] = oldTrack[DICT_BBOX_CENTERS][frameIdx]
+#     newTrack[DICT_BBOX_ROTATIONS][frameIdx+delta] = oldTrack[DICT_BBOX_ROTATIONS][frameIdx]
+#     newTrack[DICT_FRAMES_LOCATIONS][frameIdx+delta] = frameLocs[frameIdx+delta]
+    
+# np.save(dataPath + dataSet + "/sprite-" + newTrack[DICT_SPRITE_NAME] + ".npy", newTrack)
 
 # <codecell>
 
@@ -218,6 +251,73 @@ print len(np.argwhere(p.contains_points(points)))
 
 # <codecell>
 
+print "{0:04}".format(4)
+
+# <codecell>
+
+class SemanticsSlider(QtGui.QSlider) :
+    def __init__(self, orientation=QtCore.Qt.Horizontal, parent=None) :
+        super(SemanticsSlider, self).__init__(orientation, parent)
+        style = "QSlider::handle:horizontal { background: #cccccc; width: 25px; border-radius: 0px; } "
+        style += "QSlider::groove:horizontal { background: #dddddd; } "
+        self.setStyleSheet(style)
+        
+        self.semanticsToDraw = []
+        self.numOfFrames = 1
+        self.selectedSemantics = 0
+        
+    def setSelectedSemantics(self, selectedSemantics) :
+        self.selectedSemantics = selectedSemantics
+        
+    def setSemanticsToDraw(self, semanticsToDraw, numOfFrames) :
+        self.semanticsToDraw = semanticsToDraw
+        self.numOfFrames = float(numOfFrames)
+        
+        desiredHeight = len(self.semanticsToDraw)*7
+        self.setFixedHeight(desiredHeight)
+        
+        self.resize(self.width(), self.height())
+        self.update()
+        
+    def paintEvent(self, event) :
+        super(SemanticsSlider, self).paintEvent(event)
+        
+        painter = QtGui.QPainter(self)
+        
+        ## draw semantics
+        
+        yCoord = 0.0
+        for i in xrange(len(self.semanticsToDraw)) :
+            col = self.semanticsToDraw[i][DRAW_COLOR]
+
+            painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255)))
+            startX =  self.semanticsToDraw[i][DRAW_FIRST_FRAME]/self.numOfFrames*self.width()
+            endX =  self.semanticsToDraw[i][DRAW_LAST_FRAME]/self.numOfFrames*self.width()
+
+            if self.selectedSemantics == i :
+                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 127), 1, 
+                                              QtCore.Qt.DashLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+                painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
+
+            else :
+                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 63), 1, 
+                                              QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+                painter.drawRect(startX, yCoord+1.5, endX-startX, 3)
+
+
+            yCoord += 7
+
+
+        ## draw slider
+
+        ## the slider is 2 pixels wide so remove 1.0 from X coord
+        sliderXCoord = np.max((self.sliderPosition()/self.numOfFrames*self.width()-1.0, 0.0))
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 0), 0))
+        painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(0, 0, 0, 128)))
+        painter.drawRect(sliderXCoord, 0, 2, self.height())
+
+# <codecell>
+
 class ImageLabel(QtGui.QLabel) :
     
     def __init__(self, text, parent=None):
@@ -292,6 +392,8 @@ class Window(QtGui.QWidget):
         self.showFrame(self.frameIdx)
         
         self.loadTrackedSprites()
+        
+        self.semanticsToDraw = []
         
         self.setFocus()
         
@@ -517,12 +619,31 @@ class Window(QtGui.QWidget):
                                                DICT_FRAMES_LOCATIONS:{}
                                            })
 #                 self.currentSpriteIdx = 
+                self.setSemanticsToDraw()
                 self.setSpriteList()
                 self.spriteListTable.selectRow(len(self.trackedSprites)-1)
                 self.showFrame(self.frameIdx)
                 sys.stdout.flush()
             
         self.setFocus()
+        
+    def setSemanticsToDraw(self) :
+        if len(self.trackedSprites) > 0  :
+            self.semanticsToDraw = []
+            for i in xrange(0, len(self.trackedSprites)):
+                if DICT_MEDIAN_COLOR in self.trackedSprites[i].keys() :
+                    col = self.trackedSprites[i][DICT_MEDIAN_COLOR]
+                else :
+                    col = np.array([0, 0, 0])
+                
+                if len(self.trackedSprites[i][DICT_BBOXES].keys()) > 0 :
+                    self.semanticsToDraw.append({
+                                                    DRAW_COLOR:col,
+                                                    DRAW_FIRST_FRAME:np.min(self.trackedSprites[i][DICT_BBOXES].keys()),
+                                                    DRAW_LAST_FRAME:np.max(self.trackedSprites[i][DICT_BBOXES].keys())
+                                                })
+                
+            self.frameIdxSlider.setSemanticsToDraw(self.semanticsToDraw, numOfFrames)
             
     def changeSprite(self, row) :
         print "changingSprite"
@@ -537,17 +658,21 @@ class Window(QtGui.QWidget):
             else :
                 self.frameIdxSpinBox.setValue(0)
             
+            self.frameIdxSlider.setSelectedSemantics(self.currentSpriteIdx)
+            
         self.setFocus()
             
     def loadTrackedSprites(self) :
         ## going to first frame of first sprite if there were no sprites before loading
         goToNewSprite = len(self.trackedSprites) == 0
-        for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+        for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
             self.trackedSprites.append(np.load(sprite).item())
         
         self.setSpriteList()
         if len(self.trackedSprites) > 0 and goToNewSprite :
             self.spriteListTable.selectRow(0)
+            
+        self.setSemanticsToDraw()
             
     def setSpriteList(self) :
         self.spriteListTable.setRowCount(0)
@@ -586,8 +711,8 @@ class Window(QtGui.QWidget):
             self.showFrame(self.frameIdx)
         
     def saveTrackedSprites(self) :
-        for sprite in self.trackedSprites :
-            np.save(dataPath + dataSet + "/sprite-" + sprite[DICT_SPRITE_NAME] + ".npy", sprite)
+        for sprite, i in zip(self.trackedSprites, xrange(len(self.trackedSprites))) :
+            np.save(dataPath + dataSet + "/sprite-" + "{0:04}".format(i) + "-" + sprite[DICT_SPRITE_NAME] + ".npy", sprite)
             print sprite[DICT_SPRITE_NAME], "saved"
             sys.stdout.flush()
         
@@ -681,25 +806,30 @@ class Window(QtGui.QWidget):
             self.initTracker()
             self.trackInVideo(True)
 #             print "tracking forward", self.bbox, self.rotation
+            self.setSemanticsToDraw()
             self.tracking = False
         elif self.bboxIsSet and e.key() == QtCore.Qt.Key_Backspace : ## Track backward
             self.tracking = True
             self.initTracker()
             self.trackInVideo(False)
 #             print "tracking backward", self.bbox, self.rotation
+            self.setSemanticsToDraw()
             self.tracking = False
         elif e.key() == QtCore.Qt.Key_Space : ## stop tracking
+            self.setSemanticsToDraw()
             self.tracking = False
         elif self.bboxIsSet and self.tracker != None and e.key() == QtCore.Qt.Key_Right :
             self.tracking = True
             self.frameIdxSpinBox.setValue(self.frameIdx+1)
             self.trackInFrame()
+            self.setSemanticsToDraw()
 #             print "tracking next frame", self.bbox, self.rotation
             self.tracking = False
         elif self.bboxIsSet and self.tracker != None and e.key() == QtCore.Qt.Key_Left :
             self.tracking = True
             self.frameIdxSpinBox.setValue(self.frameIdx-1)
             self.trackInFrame()
+            self.setSemanticsToDraw()
 #             print "tracking previous frame", self.bbox, self.rotation
             self.tracking = False
         elif e.key() == QtCore.Qt.Key_Delete :
@@ -777,7 +907,7 @@ class Window(QtGui.QWidget):
         self.frameInfo = QtGui.QLabel("Info text")
         self.frameInfo.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
         
-        self.frameIdxSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.frameIdxSlider = SemanticsSlider(QtCore.Qt.Horizontal)
         self.frameIdxSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
         self.frameIdxSlider.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.frameIdxSlider.setTickPosition(QtGui.QSlider.TicksBothSides)
@@ -857,6 +987,15 @@ class Window(QtGui.QWidget):
 window = Window()
 window.show()
 app.exec_()
+
+# <codecell>
+
+tmp = np.load(dataPath+dataSet+"sprite-0000-blue_car1.npy").item()
+print tmp.keys()
+
+# <codecell>
+
+print window.bbox
 
 # <codecell>
 

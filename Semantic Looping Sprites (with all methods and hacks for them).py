@@ -19,12 +19,14 @@ from PIL import Image
 from PySide import QtCore, QtGui
 
 import GraphWithValues as gwv
+import VideoTexturesUtils as vtu
 import opengm
 
 app = QtGui.QApplication(sys.argv)
 
 DICT_SPRITE_NAME = 'sprite_name'
 DICT_BBOXES = 'bboxes'
+DICT_FOOTPRINTS = 'footprints' ## same as bboxes but it indicates the footprint of the sprite on the ground plane
 DICT_BBOX_ROTATIONS = 'bbox_rotations'
 DICT_BBOX_CENTERS = 'bbox_centers'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
@@ -33,9 +35,14 @@ DICT_SPRITE_IDX = 'sprite_idx' # stores the index in the self.trackedSprites arr
 DICT_DESIRED_SEMANTICS = 'desired_semantics' # stores what the desired semantics are for a certain sprite 
 #(I could index them by the frame when the toggle happened instead of using the below but maybe ordering is important and I would lose that using a dict)
 DICT_FRAME_SEMANTIC_TOGGLE = 'frame_semantic_toggle'# stores the frame index in the generated sequence when the desired semantics have changed
+DICT_MEDIAN_COLOR = 'median_color'
 
-dataPath = "/home/ilisescu/PhD/data/"
+dataPath = "/media/ilisescu/Data1/PhD/data/"
 dataSet = "havana/"
+# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+# dataSet = "theme_park_sunny/"
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -47,8 +54,11 @@ BL_IDX = 3
 
 ## load 
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
+    if DICT_SPRITE_NAME not in trackedSprites[-1] :
+        del trackedSprites[-1]
+#     print trackedSprites[-1][DICT_SPRITE_NAME]
 
 # <codecell>
 
@@ -234,7 +244,7 @@ def aabb2obbDist(aabb, obb, verbose = False) :
         projPoints = np.dot(np.hstack((aabb, np.ones((len(aabb), 1)))), np.array([[1, m, -m*b], [m, m**2, b]]).T)/(m**2+1)
         if np.all(np.negative(np.isnan(projPoints))) :
             ## find distances
-            dists = np.linalg.norm(projPoints-aabb, axis=-1)
+            dists = aabb2pointsDist(aabb, projPoints)#np.linalg.norm(projPoints-aabb, axis=-1)
             ## find closest point
             closestPoint = np.argmin(dists)
             ## if rs is between 0 and 1 the point is on the segment
@@ -247,8 +257,10 @@ def aabb2obbDist(aabb, obb, verbose = False) :
                 print rs
             ## if closestPoint is on the segment
             if rs[closestPoint] > 0.0 and rs[closestPoint] < 1.0 :
+#                 print "in", aabb2pointDist(aabb, projPoints[closestPoint, :])
                 minDist = np.min((minDist, aabb2pointDist(aabb, projPoints[closestPoint, :])))
             else :
+#                 print "out", aabb2pointDist(aabb, obb[i, :]), aabb2pointDist(aabb, obb[j, :])
                 minDist = np.min((minDist, aabb2pointDist(aabb, obb[i, :]), aabb2pointDist(aabb, obb[j, :])))
 
     return minDist
@@ -257,6 +269,11 @@ def aabb2obbDist(aabb, obb, verbose = False) :
 def aabb2pointDist(aabb, point) :
     dx = np.max((np.min(aabb[:, 0]) - point[0], 0, point[0] - np.max(aabb[:, 0])))
     dy = np.max((np.min(aabb[:, 1]) - point[1], 0, point[1] - np.max(aabb[:, 1])))
+    return np.sqrt(dx**2 + dy**2);
+
+def aabb2pointsDist(aabb, points) :
+    dx = np.max(np.vstack((np.min(aabb[:, 0]) - points[:, 0], np.zeros(len(points)), points[:, 0] - np.max(aabb[:, 0]))), axis=0)
+    dy = np.max(np.vstack((np.min(aabb[:, 1]) - points[:, 1], np.zeros(len(points)), points[:, 1] - np.max(aabb[:, 1]))), axis=0)
     return np.sqrt(dx**2 + dy**2);
 
 
@@ -279,7 +296,7 @@ def getShiftedSpriteTrackDist(firstSprite, secondSprite, shift) :
     return totalDistance, distances, frameRanges
 
 
-def getOverlappingSpriteTracksDistance(firstSprite, secondSprite, frameRanges) :
+def getOverlappingSpriteTracksDistance(firstSprite, secondSprite, frameRanges, doEarlyOut = True, verbose = False) :
 #     ## for now the distance is only given by the distance between bbox center but can add later other things like bbox overlapping region
 #     bboxCenters0 = np.array([firstSprite[DICT_BBOX_CENTERS][x] for x in np.sort(firstSprite[DICT_BBOX_CENTERS].keys())[frameRanges[0, :]]])
 #     bboxCenters1 = np.array([secondSprite[DICT_BBOX_CENTERS][x] for x in np.sort(secondSprite[DICT_BBOX_CENTERS].keys())[frameRanges[1, :]]])
@@ -292,24 +309,32 @@ def getOverlappingSpriteTracksDistance(firstSprite, secondSprite, frameRanges) :
     firstSpriteKeys = np.sort(firstSprite[DICT_BBOX_CENTERS].keys())
     secondSpriteKeys = np.sort(secondSprite[DICT_BBOX_CENTERS].keys())
     allDists = np.zeros(frameRanges.shape[-1])
-    for i in xrange(frameRanges.shape[-1]) :
-        theta = firstSprite[DICT_BBOX_ROTATIONS][firstSpriteKeys[frameRanges[0, i]]]
-        rotMat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-        bbox1 = np.dot(rotMat, firstSprite[DICT_BBOXES][firstSpriteKeys[frameRanges[0, i]]].T).T
-        bbox2 = np.dot(rotMat, secondSprite[DICT_BBOXES][secondSpriteKeys[frameRanges[1, i]]].T).T
-        ## if the bboxes coincide then the distance is set to 0
-        if np.all(np.abs(bbox1 - bbox2) <= 10**-10) :
-            allDists[i] = 0.0
-        else :
-            allDists[i] = aabb2obbDist(bbox1, bbox2)
+    for i in xrange(frameRanges.shape[-1]) :            
+        allDists[i] = getSpritesBBoxDist(firstSprite[DICT_BBOX_ROTATIONS][firstSpriteKeys[frameRanges[0, i]]],
+                                          firstSprite[DICT_BBOXES][firstSpriteKeys[frameRanges[0, i]]], 
+                                          secondSprite[DICT_BBOXES][secondSpriteKeys[frameRanges[1, i]]])
+        
+        if verbose and np.mod(i, frameRanges.shape[-1]/100) == 0 :
+            sys.stdout.write('\r' + "Computed image pair " + np.string_(i) + " of " + np.string_(frameRanges.shape[-1]))
+            sys.stdout.flush()
         
         ## early out since you can't get lower than 0
-        if allDists[i] == 0.0 :
+        if doEarlyOut and allDists[i] == 0.0 :
             break
             
     totDist = np.min(allDists)
 #     return np.sum(centerDistance)/len(centerDistance), centerDistance    
     return totDist, allDists
+
+def getSpritesBBoxDist(theta, bbox1, bbox2) :
+    rotMat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    bbox1 = np.dot(rotMat, bbox1.T).T
+    bbox2 = np.dot(rotMat, bbox2.T).T
+    ## if the bboxes coincide then the distance is set to 0
+    if np.all(np.abs(bbox1 - bbox2) <= 10**-10) :
+        return 0.0
+    else :
+        return aabb2obbDist(bbox1, bbox2)
 
 # <codecell>
 
@@ -396,15 +421,48 @@ def solveSparseDynProgMRF(unaryCosts, pairwiseCosts, nodesConnectedToLabel) :
         minCostTraversal[-1] = np.floor((unaryCosts.shape[0])/2)
     
     for i in xrange(len(minCostTraversal)-2, -1, -1) :
-        minCostTraversal[i] = minCostPaths[minCostTraversal[i+1], i+1]
+        minCostTraversal[i] = minCostPaths[ minCostTraversal[i+1], i+1]
         
     return minCostTraversal, np.min(minCosts[:, -1])
 
 # <codecell>
 
+### THIS CAN BE USED WHEN SPRITE INDICES HAVE CHANGED AND WANT TO UPDATE THE PRECOMPUTED DISTANCES DICT PROPERLY ####
+# tmp = glob.glob(dataPath + dataSet + "sprite*.npy")[0]
+# oldVsNew = []
+# for sprite, i in zip(glob.glob(dataPath + dataSet + "sprite*.npy"), arange(len(glob.glob(dataPath + dataSet + "sprite*.npy")))) :
+#     for t in xrange(len(trackedSprites)) :
+#         if trackedSprites[t][DICT_SPRITE_NAME] == np.load(sprite).item()[DICT_SPRITE_NAME] :
+#             print trackedSprites[t][DICT_SPRITE_NAME], i, t
+#             oldVsNew.append([i, t])
+#             break
+            
+# oldVsNew = np.array(oldVsNew)
+# oldVsNew = oldVsNew[np.ndarray.flatten(np.argsort(oldVsNew[:, 1])), :]
+# print oldVsNew
+
+# newPrecomputedDistances = {}
+# for i in xrange(len(trackedSprites)) :
+#     for j in xrange(i, len(trackedSprites)) :
+#         ## for each i and j of the new sprite idxs get the corresponding old idxs
+#         print i, j, "-", oldVsNew[i, 0], oldVsNew[j, 0], 
+#         ## if the indices I'm asking for are not sorted I need to invert the shifts, that is negative shifts are now positive and viceversa
+#         ## because sprite indices were sorted when computing the old distances
+#         if oldVsNew[i, 0] > oldVsNew[j, 0] :
+#             print "reverse"
+#             tmp = precomputedDistances[np.string_(oldVsNew[j, 0])+np.string_(oldVsNew[i, 0])]
+#             newPrecomputedDistances[np.string_(i)+np.string_(j)] = {-x:tmp[x] for x in tmp.keys()}
+#         else :
+#             print "don't reverse"
+#             newPrecomputedDistances[np.string_(i)+np.string_(j)] = precomputedDistances[np.string_(oldVsNew[i, 0])+np.string_(oldVsNew[j, 0])]
+            
+# np.save(dataPath + dataSet + "precomputedDistances.npy", newPrecomputedDistances)        
+
+# <codecell>
+
 ## precompute all distances for all possible sprite pairings
 # precomputedDistances = {}
-# for i in xrange(len(trackedSprites)) :
+# for i in arange(len(trackedSprites)) :
 #     for j in xrange(i, len(trackedSprites)) :
 #         possibleShifts = np.arange(-len(trackedSprites[i][DICT_BBOX_CENTERS])+1, 
 #                            len(trackedSprites[j][DICT_BBOX_CENTERS]), dtype=int)
@@ -433,48 +491,60 @@ precomputedDistances = np.load(dataPath + dataSet + "precomputedDistances.npy").
 
 # <codecell>
 
+# figure(); plot([precomputedDistances['03'][x] for x in np.sort(precomputedDistances['03'].keys())])
+# totalDistance, distances, frameRanges = getShiftedSpriteTrackDist(trackedSprites[3], trackedSprites[0], 1020-400)
+# figure(); plot(distances)
+# print getOverlappingSpriteTracksDistance(trackedSprites[0], trackedSprites[3], np.array([[400], [1020]]))
+
+# <codecell>
+
 ## load all sprite patches
-preloadedSpritePatches = []
-currentSpriteImages = []
-del preloadedSpritePatches
-preloadedSpritePatches = []
-for sprite in window.trackedSprites :
-    maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked"
-    del currentSpriteImages
-    currentSpriteImages = []
-    for frameKey in np.sort(sprite[DICT_FRAMES_LOCATIONS].keys()) :
-        frameName = sprite[DICT_FRAMES_LOCATIONS][frameKey].split(os.sep)[-1]
+# preloadedSpritePatches = []
+# currentSpriteImages = []
+# del preloadedSpritePatches
+# preloadedSpritePatches = []
+# for sprite in trackedSprites :
+# #     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked-blended"
+#     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-maskedFlow-blended"
+#     del currentSpriteImages
+#     currentSpriteImages = []
+#     for frameKey in np.sort(sprite[DICT_FRAMES_LOCATIONS].keys()) :
+#         frameName = sprite[DICT_FRAMES_LOCATIONS][frameKey].split(os.sep)[-1]
         
-        if os.path.isdir(maskDir) and os.path.exists(maskDir+"/"+frameName) :
-            im = np.array(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), dtype=np.uint8)
+#         if os.path.isdir(maskDir) and os.path.exists(maskDir+"/"+frameName) :
+#             im = np.array(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), dtype=np.uint8)
             
-            visiblePixels = np.argwhere(im[:, :, -1] != 0)
-            topLeft = np.min(visiblePixels, axis=0)
-            patchSize = np.max(visiblePixels, axis=0) - topLeft + 1
+#             visiblePixels = np.argwhere(im[:, :, -1] != 0)
+#             topLeft = np.min(visiblePixels, axis=0)
+#             patchSize = np.max(visiblePixels, axis=0) - topLeft + 1
             
-            currentSpriteImages.append({'top_left_pos':topLeft, 'sprite_colors':im[visiblePixels[:, 0], visiblePixels[:, 1], :], 
-                                        'visible_indices': visiblePixels-topLeft, 'patch_size': patchSize})
-#             currentSpriteImages.append(im[topLeft[0]:topLeft[0]+patchSize[0]+1, topLeft[1]:topLeft[1]+patchSize[1]+1])
-        else :
-#             im = np.ascontiguousarray(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameIdx]), dtype=np.uint8)
-            currentSpriteImages.append(None)
+#             currentSpriteImages.append({'top_left_pos':topLeft, 'sprite_colors':im[visiblePixels[:, 0], visiblePixels[:, 1], :], 
+#                                         'visible_indices': visiblePixels-topLeft, 'patch_size': patchSize})
+# #             currentSpriteImages.append(im[topLeft[0]:topLeft[0]+patchSize[0]+1, topLeft[1]:topLeft[1]+patchSize[1]+1])
+#         else :
+# #             im = np.ascontiguousarray(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameIdx]), dtype=np.uint8)
+#             currentSpriteImages.append(None)
         
-        sys.stdout.write('\r' + "Loaded image " + np.string_(len(currentSpriteImages)) + " (" + np.string_(len(sprite[DICT_FRAMES_LOCATIONS])) + ")")
-        sys.stdout.flush()
-    preloadedSpritePatches.append(np.copy(currentSpriteImages))
-    print
-    print "done with sprite", sprite[DICT_SPRITE_NAME]
+#         sys.stdout.write('\r' + "Loaded image " + np.string_(len(currentSpriteImages)) + " (" + np.string_(len(sprite[DICT_FRAMES_LOCATIONS])) + ")")
+#         sys.stdout.flush()
+#     preloadedSpritePatches.append(np.copy(currentSpriteImages))
+#     print
+#     print "done with sprite", sprite[DICT_SPRITE_NAME]
+
+# np.save(dataPath + dataSet + "preloadedSpritePatches.npy", preloadedSpritePatches)
+
+preloadedSpritePatches = list(np.load(dataPath + dataSet + "preloadedSpritePatches.npy"))
 
 # <codecell>
 
 ## go through the generated sequence and check that SPRITE_IDX matches the index in tracked sprites
 ## load sprites 
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 
 print len(trackedSprites)
-for sequenceName in np.sort(glob.glob(dataPath+dataSet+"generatedSequence-*")) :
+for sequenceName in np.sort(glob.glob(dataPath+dataSet+"generatedSequence-debug*")) :
     print sequenceName
     generatedSequence = list(np.load(sequenceName))
     print len(generatedSequence)
@@ -522,9 +592,266 @@ print minCostTraversal
 
 # <codecell>
 
+## start with generating two sequences one for an instance of red_car1 and one for white_bus1 such that they would be colliding
+spriteIndices = np.array([0, 3])
+sequenceStartFrames = np.array([0, 580])
+sequenceLength = 450
+generatedSequences = np.zeros((len(spriteIndices), sequenceLength), dtype=int)
+allUnaries = []
+allPairwise = []
+allNodesConnectedToLabel = []
+
+## now generate initial conflicting sequences to be resolved later
+
+for idx in xrange(len(spriteIndices)) :
+    spriteTotalLength = len(trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS])
+
+    spriteSemanticLabels = np.zeros((spriteTotalLength+1, 2))
+    ## label 0 means sprite not visible (i.e. only show the first empty frame)
+    spriteSemanticLabels[0, 0] = 1.0
+    spriteSemanticLabels[1:, 1] = 1.0
+
+    tic = time.time()
+    if idx == 0 : 
+        spriteDesiredSemantics = np.array([1.0, 0.0]).reshape((1, 2))
+        spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, toggleLabelsSmoothly(np.array([1.0, 0.0]).reshape((1, 2)), 8)))
+        spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, np.roll(np.array([1.0, 0.0]).reshape((1, 2)), 1).repeat(sequenceLength-8-1, axis=0)))
+        
+        unaries, pairwise = getMRFCosts(spriteSemanticLabels, spriteDesiredSemantics, sequenceStartFrames[idx], sequenceLength)
+    else :
+        unaries, pairwise = getMRFCosts(spriteSemanticLabels, np.array([1.0, 0.0]).reshape((1, 2)).repeat(sequenceLength, axis=0), sequenceStartFrames[idx], sequenceLength)
+    allUnaries.append(unaries)
+    allPairwise.append(pairwise)
+    
+    jumpCosts = spriteDistMats[idx][1:, :-1]**2
+    viableJumps = np.argwhere(jumpCosts < 0.2)
+    viableJumps = viableJumps[np.ndarray.flatten(np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.1))]
+    ## add 1 to indices because of the 0th frame, and then 5, 4 from the filtering and 1 from going from distances to costs
+    allPairwise[idx][viableJumps[:, 0]+1+1+4, viableJumps[:, 1]+1+1+4] = jumpCosts[viableJumps[:, 0], viableJumps[:, 1]]
+    
+    ## now try and do the optimization completely vectorized
+    ## number of edges connected to each label node of variable n (pairwise stores node at arrow tail as cols and at arrow head as rows)
+    maxEdgesPerLabel = np.max(np.sum(np.array(pairwise.T != np.max(pairwise.T), dtype=int), axis=-1))
+    ## initialize this to index of connected label node with highest edge cost (which is then used as padding)
+    ## it contains for each label node of variable n (indexed by rows), all the label nodes of variable n-1 it is connected to by non infinite cost edge (indexed by cols)
+    nodesConnectedToLabel = np.argmax(pairwise.T, axis=-1).reshape((len(pairwise.T), 1)).repeat(maxEdgesPerLabel, axis=-1)
+    
+    sparseIndices = np.where(pairwise != np.max(pairwise))
+    # print sparseIndices
+    tailIndices = sparseIndices[0]
+    headIndices = sparseIndices[1]
+    
+    ## this contains which label of variable n-1 is connected to which label of variable n
+    indicesInLabelSpace = [list(tailIndices[np.where(headIndices == i)[0]]) for i in np.unique(headIndices)]
+    
+    for headLabel, tailLabels in zip(arange(0, len(nodesConnectedToLabel)), indicesInLabelSpace) :
+        nodesConnectedToLabel[headLabel, 0:len(tailLabels)] = tailLabels    
+        
+    allNodesConnectedToLabel.append(nodesConnectedToLabel)
+    
+    # gwv.showCustomGraph(unaries)
+    print "computed costs for sprite", spriteIndices[idx], "in", time.time() - tic; sys.stdout.flush()
+    tic = time.time()
+    # minCostTraversal, minCost = solveMRF(unaries, pairwise)
+#     minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)
+    minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[idx].T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+    
+    print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+    generatedSequences[idx, :] = minCostTraversal
+
+print generatedSequences
+
+count = 0
+while True :
+    print "iteration", count, 
+    ## get distance between every pairing of frames in the generatedSequences
+    areCompatible = np.zeros(generatedSequences.shape[-1], dtype=bool)
+    areCompatible[np.any(generatedSequences < 1, axis=0)] = True
+    
+    compatibDist, allCompatibDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], generatedSequences)
+    print "incompatibilities to solve", len(np.argwhere(allCompatibDists <= 1.0)); sys.stdout.flush()
+#     print allCompatibDists
+    
+    areCompatible[allCompatibDists > 1.0] = True
+    
+#     if not np.all(areCompatible) :
+#         for idx in arange(len(spriteIndices))[0:1] :
+            
+#             allUnaries[idx][np.negative(areCompatible), generatedSequences[idx, np.negative(areCompatible)]] += 1000.0 #10000000.0
+#             ## if I fix spriteIndices[1] then I can find out all combinations of frames between spriteIndices[0] and the generated sequence for spriteIndices[1]
+# #             gwv.showCustomGraph(allUnaries[idx])
+            
+#             tic = time.time()
+#             minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[idx].T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+            
+#             print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+# #             print minCostTraversal, minCost
+            
+#             generatedSequences[idx, :] = minCostTraversal
+#     else :
+#         break
+    
+    count += 1
+    if count > 0 :
+        break
+print generatedSequences
+
+# <codecell>
+
+spriteTotLength = len(trackedSprites[0][DICT_BBOX_CENTERS])
+
+spriteSequence = generatedSequences[1, :][generatedSequences[1, :]-1 >= 0]#.reshape((1, sequenceLength)).repeat(spriteTotLength)-1
+# bob = np.vstack((np.ndarray.flatten(arange(spriteTotLength).reshape((1, spriteTotLength)).repeat(sequenceLength, axis=0)), 
+#                  generatedSequences[1, :].reshape((1, sequenceLength)).repeat(spriteTotLength)-1))
+bob = np.vstack((np.ndarray.flatten(arange(spriteTotLength).reshape((1, spriteTotLength)).repeat(len(spriteSequence), axis=0)), 
+                 spriteSequence.reshape((1, len(spriteSequence))).repeat(spriteTotLength)-1))
+
+# dist, allDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], bob, False, True)
+## just get the dists from spritesCompatibility
+allDists = spritesCompatibility[bob[0, :], bob[1, :]].reshape((len(spriteSequence), spriteTotLength))
+
+# <codecell>
+
+gwv.showCustomGraph(allDists.reshape((len(spriteSequence), spriteTotLength)))
+# print allDists.reshape((sequenceLength, spriteTotLength))
+
+# <codecell>
+
+## if I fix spriteIndices[1] then I can find out all combinations of frames between spriteIndices[0] and the generated sequence for spriteIndices[1]
+idx = 0
+modifiedUnaries = np.copy(allUnaries[idx])
+incompatiblePairs = np.argwhere(allDists.reshape((len(spriteSequence), spriteTotLength)) <= 1.0)
+# incompatiblePairs = incompatiblePairs[np.ndarray.flatten(np.argwhere(allDists.reshape((sequenceLength, spriteTotLength))[incompatiblePairs[:, 0], incompatiblePairs[:, 1]] >= 0.1)), :]
+modifiedUnaries[incompatiblePairs[:, 0], incompatiblePairs[:, 1]+1] = 1e7
+gwv.showCustomGraph(modifiedUnaries)
+
+tic = time.time()
+minCostTraversal, minCost = solveSparseDynProgMRF(modifiedUnaries.T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+print minCostTraversal, minCost
+
+# <codecell>
+
+# gwv.showCustomGraph(spriteDistMats[1])
+tmp = np.copy(spritesCompatibility)
+tmp[sequenceStartFrames[0]-1, 5:-5+1] += spriteDistMats[1][1:, :-1][sequenceStartFrames[1]-1, :]
+gwv.showCustomGraph(tmp)
+
+# <codecell>
+
+print trackedSprites[spriteIndices[idx]][DICT_SPRITE_NAME]
+
+# <codecell>
+
+debugSequence = []
+for idx in xrange(len(spriteIndices)) :
+    debugSequence.append({
+                          DICT_SPRITE_NAME:trackedSprites[spriteIndices[idx]][DICT_SPRITE_NAME],
+                          DICT_SPRITE_IDX:spriteIndices[idx],
+                          DICT_SEQUENCE_FRAMES:generatedSequences[idx, :],
+                          DICT_DESIRED_SEMANTICS:np.array([1.0, 0.0]).reshape((1, 2)).repeat(sequenceLength, axis=0)
+                          })
+    if idx == 0 :
+        debugSequence[idx][DICT_SEQUENCE_FRAMES] = minCostTraversal#np.ones(sequenceLength)*200
+np.save(dataPath+dataSet+"generatedSequence-debug.npy", debugSequence)
+
+# <codecell>
+
+incompatibleDistances = np.copy(spritesCompatibility)
+incompatiblePairs = np.argwhere(incompatibleDistances <= 1.0)
+incompatibleDistances[incompatiblePairs[:, 0], incompatiblePairs[:, 1]] = 1e7
+gwv.showCustomGraph(incompatibleDistances)
+
+# <codecell>
+
+## compute L2 distance between bbox centers for given sprites
+spriteDistMats = []
+for idx in xrange(len(spriteIndices)) :
+    bboxCenters = np.array([trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS][x] for x in np.sort(trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS].keys())])
+    l2DistMat = np.zeros((len(bboxCenters), len(bboxCenters)))
+    for c in xrange(len(bboxCenters)) :
+        l2DistMat[c, c:] = np.linalg.norm(bboxCenters[c].reshape((1, 2)).repeat(len(bboxCenters)-c, axis=0) - bboxCenters[c:], axis=1)
+        l2DistMat[c:, c] = l2DistMat[c, c:]
+            
+    spriteDistMats.append(vtu.filterDistanceMatrix(l2DistMat, 4, False))
+
+# <codecell>
+
+## compute compatibility distance for every frame pairing between sprites
+## compute L2 distance between bbox centers for given sprites
+spritesCompatibility = np.zeros((len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS]), len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS])))
+
+for frame in np.arange(len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS])) :
+    spriteTotLength = len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS])
+    frameRanges = np.vstack((np.ones(spriteTotLength, dtype=int)*frame, np.arange(spriteTotLength, dtype=int).reshape((1, spriteTotLength))))
+    compatibilityDist, allCompatibilityDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], frameRanges, False)
+    spritesCompatibility[frame, :] = allCompatibilityDists
+    
+    sys.stdout.write('\r' + "Computed frame " + np.string_(frame) + " of " + np.string_(len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS])))
+    sys.stdout.flush()
+
+# <codecell>
+
+figure(); plot(np.min(spritesCompatibility, axis=1))
+
+# <codecell>
+
+gwv.showCustomGraph(spritesCompatibility)
+
+# <codecell>
+
+tmp = np.clip(spriteDistMats[0], 0.1, 0.3)#*(spriteDistMats[0] <= 1.0)
+gwv.showCustomGraph(tmp)
+# probs, cumProbs = vtu.getProbabilities(spriteDistMats[0][1:, 0:-1], 0.01, None, True)
+probs, cumProbs = vtu.getProbabilities(tmp[1:, 0:-1], 0.001, None, False)
+gwv.showCustomGraph(probs)
+gwv.showCustomGraph(cumProbs)
+
+# <codecell>
+
+spriteIndex = 0
+gwv.showCustomGraph(allPairwise[spriteIndex])
+gwv.showCustomGraph(spriteDistMats[spriteIndex])
+
+pairwiseWithDist = np.ones_like(allPairwise[spriteIndex])* 5
+jumpCosts = spriteDistMats[spriteIndex][1:, :-1]**2
+viableJumps = np.argwhere(jumpCosts < 0.2)
+viableJumps = viableJumps[np.ndarray.flatten(np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.1))]
+## add 1 to indices because of the 0th frame, and then 5, 4 from the filtering and 1 from going from distances to costs
+pairwiseWithDist[viableJumps[:, 0]+1, viableJumps[:, 1]+1] = jumpCosts[viableJumps[:, 0], viableJumps[:, 1]]
+gwv.showCustomGraph(pairwiseWithDist)
+
+# <codecell>
+
+print viableJumps.shape
+
+# <codecell>
+
+# np.all((jumpCosts < 2.0, jumpCosts > 0.1), axis=0)
+print np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.5)
+
+# <codecell>
+
+minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[spriteIndex].T, pairwiseWithDist.T, allNodesConnectedToLabel[spriteIndex])
+print minCostTraversal
+
+# <codecell>
+
+gwv.showCustomGraph(tmp.reshape(spriteDistMats[spriteIndex].shape))
+
+# <codecell>
+
+np.argwhere(tmp.reshape(spriteDistMats[spriteIndex].shape) < 0)
+
+# <headingcell level=2>
+
+# From here on there's stuff using the hardcoded compatibility measure and assumes the sprite loops till the end of its sequence without jumping around in the timeline
+
+# <codecell>
+
 ## load tracked sprites
 trackedSprites = []
-for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 ## load generated sequence
 generatedSequence = list(np.load(dataPath + dataSet + "generatedSequence-2015-05-02_19:41:52.npy"))
@@ -598,11 +925,6 @@ if len(incompatibleSpriteTracks) == 2 :
         
 #         sys.stdout.write('\r' + "Done " + np.string_(i) + " shifts of " + np.string_(len(allDistances)))
 #         sys.stdout.flush()
-
-# <codecell>
-
-figure(); plot(possibleShifts, allDistances)
-xlim(possibleShifts[0], possibleShifts[-1])
 
 # <codecell>
 
@@ -755,6 +1077,125 @@ for cost, path, i in zip(minCosts[:, tmp], minCostPaths[:, tmp], xrange(1, minCo
 
 # <codecell>
 
+DRAW_FIRST_FRAME = 'first_frame'
+DRAW_LAST_FRAME = 'last_frame'
+DRAW_COLOR = 'color'
+
+class SemanticsSlider(QtGui.QSlider) :
+    def __init__(self, orientation=QtCore.Qt.Horizontal, parent=None) :
+        super(SemanticsSlider, self).__init__(orientation, parent)
+        style = "QSlider::handle:horizontal { background: #cccccc; width: 25px; border-radius: 0px; } "
+        style += "QSlider::groove:horizontal { background: #dddddd; } "
+        self.setStyleSheet(style)
+        
+        self.semanticsToDraw = []
+        self.numOfFrames = 1
+        self.selectedSemantics = 0
+        
+    def setSelectedSemantics(self, selectedSemantics) :
+        self.selectedSemantics = selectedSemantics
+        
+    def setSemanticsToDraw(self, semanticsToDraw, numOfFrames) :
+        self.semanticsToDraw = semanticsToDraw
+        self.numOfFrames = float(numOfFrames)
+        
+        desiredHeight = len(self.semanticsToDraw)*7
+        self.setFixedHeight(desiredHeight)
+        
+        self.resize(self.width(), self.height())
+        self.update()
+        
+    def paintEvent(self, event) :
+        super(SemanticsSlider, self).paintEvent(event)
+        
+        painter = QtGui.QPainter(self)
+        
+        ## draw semantics
+        
+        yCoord = 0.0
+        for i in xrange(len(self.semanticsToDraw)) :
+            col = self.semanticsToDraw[i][DRAW_COLOR]
+
+            painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255)))
+            startX =  self.semanticsToDraw[i][DRAW_FIRST_FRAME]/self.numOfFrames*self.width()
+            endX =  self.semanticsToDraw[i][DRAW_LAST_FRAME]/self.numOfFrames*self.width()
+
+            if self.selectedSemantics == i :
+                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 127), 1, 
+                                              QtCore.Qt.DashLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+                painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
+
+            else :
+                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 63), 1, 
+                                              QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+                painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
+
+
+            yCoord += 7
+
+
+        ## draw slider
+
+        ## the slider is 2 pixels wide so remove 1.0 from X coord
+        sliderXCoord = np.max((self.sliderPosition()/self.numOfFrames*self.width()-1.0, 0.0))
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 0), 0))
+        painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(0, 0, 0, 128)))
+        painter.drawRect(sliderXCoord, 0, 2, self.height())
+
+# <codecell>
+
+class ListDelegate(QtGui.QItemDelegate):
+    
+    def __init__(self, parent=None) :
+        super(ListDelegate, self).__init__(parent)
+        
+        self.setBackgroundColor(QtGui.QColor.fromRgb(245, 245, 245))
+        self.setIconImage(QtGui.QImage(QtCore.QSize(0, 0), QtGui.QImage.Format_ARGB32))
+
+    def setBackgroundColor(self, bgColor) :
+        self.bgColor = bgColor
+    
+    def setIconImage(self, iconImage) :
+        self.iconImage = np.ascontiguousarray(np.copy(iconImage))
+    
+    def drawDisplay(self, painter, option, rect, text):
+        painter.save()
+        
+        colorRect = QtCore.QRect(rect.left()+rect.height(), rect.top(), rect.width()-rect.height(), rect.height())
+        selectionRect = rect
+        iconRect = QtCore.QRect(rect.left(), rect.top(), rect.height(), rect.height())
+
+        # draw colorRect
+        painter.setBrush(QtGui.QBrush(self.bgColor))
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(128, 128, 128, 255), 1, 
+                                          QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+        painter.drawRect(colorRect)
+        
+        ## draw iconRect
+        qim = QtGui.QImage(self.iconImage.data, self.iconImage.shape[1], self.iconImage.shape[0], 
+                                                       self.iconImage.strides[0], QtGui.QImage.Format_ARGB32)
+        painter.drawImage(iconRect, qim.scaled(iconRect.size()))
+        
+        ## draw selectionRect
+        if option.state & QtGui.QStyle.State_Selected:
+            painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(0, 0, 0, 0)))
+            painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255, 64, 64, 255), 5, 
+                                              QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+            painter.drawRect(selectionRect)
+        
+        # set text color
+        painter.setPen(QtGui.QPen(QtCore.Qt.black))
+        if option.state & QtGui.QStyle.State_Selected:
+            painter.setFont(QtGui.QFont("Helvetica [Cronyx]", 11, QtGui.QFont.Bold))
+        else :
+            painter.setFont(QtGui.QFont("Helvetica [Cronyx]", 11))
+            
+        painter.drawText(colorRect, QtCore.Qt.AlignVCenter | QtCore.Qt.AlignCenter, text)
+
+        painter.restore()
+
+# <codecell>
+
 class ImageLabel(QtGui.QLabel) :
     
     def __init__(self, text, parent=None):
@@ -800,6 +1241,7 @@ class Window(QtGui.QWidget):
         
         self.setWindowTitle("Looping the Unloopable")
         self.resize(1280, 720)
+        self.LIST_SECTION_SIZE = 60
         
         self.playIcon = QtGui.QIcon("play.png")
         self.pauseIcon = QtGui.QIcon("pause.png")
@@ -830,6 +1272,8 @@ class Window(QtGui.QWidget):
         self.playTimer = QtCore.QTimer(self)
         self.playTimer.setInterval(1000/30)
         self.playTimer.timeout.connect(self.renderOneFrame)
+        self.lastRenderTime = time.time()
+        self.oldInfoText = ""
         
         self.EXTEND_LENGTH = 100 + 1 ## since I get rid of the frist frame from the generated sequence because it's forced to be the one already showing
         self.TOGGLE_DELAY = 8
@@ -842,10 +1286,11 @@ class Window(QtGui.QWidget):
         
         if len(glob.glob(dataPath+dataSet+"generatedSequence-*")) > 0 :
             ## load latest sequence
-            self.generatedSequence = list(np.load(np.sort(glob.glob(dataPath+dataSet+"generatedSequence-*"))[-1]))
-            print "loaded", np.sort(glob.glob(dataPath+dataSet+"generatedSequence-*"))[-1]
+            self.generatedSequence = list(np.load(np.sort(glob.glob(dataPath+dataSet+"generatedSequence-2*"))[-1]))
+#             print "loaded", np.sort(glob.glob(dataPath+dataSet+"generatedSequence-*"))[-1]
 #             self.generatedSequence = list(np.load(dataPath+dataSet+"generatedSequence-2015-07-07_23:35:48.npy"))
 #             self.generatedSequence = generatedSequence
+#             self.generatedSequence = list(np.load(dataPath+dataSet+"generatedSequence-debug.npy"))
             if len(self.generatedSequence) > 0 :
                 ## update sliders
                 self.frameIdxSlider.setMaximum(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
@@ -854,6 +1299,10 @@ class Window(QtGui.QWidget):
                 self.frameInfo.setText("Generated sequence length: " + np.string_(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
                 
                 self.showFrame(self.frameIdx)
+                
+            self.setSemanticsToDraw()
+        
+        self.frameIdxSlider.setSelectedSemantics(-1)
         
         self.setFocus()
         
@@ -861,6 +1310,9 @@ class Window(QtGui.QWidget):
         idx = self.frameIdx + 1
         if idx >= 0 and len(self.generatedSequence) > 0 : #idx < len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) :
             self.frameIdxSpinBox.setValue(np.mod(idx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
+            
+        self.frameInfo.setText("Rendering at " + np.string_(int(1.0/(time.time() - self.lastRenderTime))) + " FPS")
+        self.lastRenderTime = time.time()
     
     def showFrame(self, idx) :
         if idx >= 0 and len(self.generatedSequence) > 0 and idx < len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) :
@@ -882,14 +1334,15 @@ class Window(QtGui.QWidget):
                 if sequenceFrameIdx >= 0 :
                     ## the trackedSprites data is indexed (i.e. the keys) by the frame indices in the original full sequence and keys are not sorted
                     frameToShowIdx = np.sort(self.trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())[sequenceFrameIdx]
-                    if spriteIdx >= 0 and spriteIdx < len(preloadedSpritePatches) and sequenceFrameIdx < len(preloadedSpritePatches[spriteIdx]) :
-                        ## the QImage for this frame has been preloaded
-#                         print "tralala", sequenceFrameIdx, self.frameIdx, s
-#                         print "drawing preloaded"
-                        self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
-                                         self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked(), preloadedSpritePatches[spriteIdx][sequenceFrameIdx])
-                    else :
-#                         print "loading image"
+                    try :
+                        if spriteIdx >= 0 and spriteIdx < len(preloadedSpritePatches) and sequenceFrameIdx < len(preloadedSpritePatches[spriteIdx]) :
+                            ## the QImage for this frame has been preloaded
+                            self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
+                                             self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked(), preloadedSpritePatches[spriteIdx][sequenceFrameIdx])
+                        else :
+                            self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
+                                             self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked())
+                    except :
                         self.drawOverlay(self.trackedSprites[spriteIdx], frameToShowIdx, self.drawSpritesBox.isChecked(), 
                                          self.drawBBoxBox.isChecked(), self.drawCenterBox.isChecked())
             
@@ -932,7 +1385,11 @@ class Window(QtGui.QWidget):
                                       QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
             ## draw bbox
             if doDrawBBox :
-                bbox = sprite[DICT_BBOXES][frameIdx]
+                if DICT_FOOTPRINTS in sprite.keys() :
+                    bbox = sprite[DICT_FOOTPRINTS][frameIdx]
+                else :
+                    bbox = sprite[DICT_BBOXES][frameIdx]
+                    
                 for p1, p2 in zip(np.mod(arange(4), 4), np.mod(arange(1, 5), 4)) :
                     painter.drawLine(QtCore.QPointF(bbox[p1, 0], bbox[p1, 1]), QtCore.QPointF(bbox[p2, 0], bbox[p2, 1]))
             
@@ -940,32 +1397,129 @@ class Window(QtGui.QWidget):
             if doDrawCenter :
                 painter.drawPoint(QtCore.QPointF(sprite[DICT_BBOX_CENTERS][frameIdx][0], sprite[DICT_BBOX_CENTERS][frameIdx][1]))
             
+#     def changeSprite(self, row) :
+#         if len(self.trackedSprites) > row :
+#             self.currentSpriteIdx = row
+            
+#         self.setFocus()
+        
     def changeSprite(self, row) :
-        if len(self.trackedSprites) > row :
-            self.currentSpriteIdx = row
+        if len(self.trackedSprites) > row.row() :
+            self.currentSpriteIdx = row.row()
+        
+        print "selected sprite", self.currentSpriteIdx; sys.stdout.flush()
             
         self.setFocus()
             
     def loadTrackedSprites(self) :
         ## going to first frame of first sprite if there were no sprites before loading
         goToNewSprite = len(self.trackedSprites) == 0
-        for sprite in glob.glob(dataPath + dataSet + "sprite*.npy") :
+        for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
             self.trackedSprites.append(np.load(sprite).item())
         
         self.setSpriteList()
         if len(self.trackedSprites) > 0 and goToNewSprite :
             self.spriteListTable.selectRow(0)
             
-    def setSpriteList(self) :
-        self.spriteListTable.setRowCount(0)
-        if len(self.trackedSprites) > 0 :
-            self.spriteListTable.setRowCount(len(self.trackedSprites))
+#     def setSpriteList(self) :
+#         self.spriteListTable.setRowCount(0)
+#         if len(self.trackedSprites) > 0 :
+#             self.spriteListTable.setRowCount(len(self.trackedSprites))
             
+#             for i in xrange(0, len(self.trackedSprites)):
+#                 self.spriteListTable.setItem(i, 0, QtGui.QTableWidgetItem(self.trackedSprites[i][DICT_SPRITE_NAME]))
+                
+#                 if DICT_MEDIAN_COLOR in self.trackedSprites[i].keys() :
+#                     col = self.trackedSprites[i][DICT_MEDIAN_COLOR]
+# #                     tmp = QtGui.QTableWidgetItem(np.string_(i))
+# #                     tmp.setStyleSheet("QTableWidgetItem { background: #cc0000; width: 25px; border-radius: 0px; } ")
+# #                     tmp.setBackground(QtGui.QColor.fromRgb(0, 0, 0, 255))#col[0], col[1], col[2], 255))
+# #                     self.spriteListTable.setVerticalHeaderItem(i, tmp)
+# #                     self.spriteListTable.verticalHeaderItem(i).setBackground(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
+#                     self.spriteListTable.item(i, 0).setBackground(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
+# #             self.spriteListTable.verticalHeader().setStyleSheet("::section { border: 2px; } ")
+#         else :
+#             self.spriteListTable.setRowCount(1)
+#             self.spriteListTable.setItem(0, 0, QtGui.QTableWidgetItem("No tracked sprites"))
+            
+    def setSpriteList(self) :
+#         self.spriteListTable.setRowCount(0)
+        if len(self.trackedSprites) > 0 :
+            self.spriteListModel.setRowCount(len(self.trackedSprites))
+#             self.spriteListModel.setColumnCount(2)
+            self.delegateList = []
+    
+            bgImg = np.array(Image.open(dataPath+dataSet+"median.png"))
             for i in xrange(0, len(self.trackedSprites)):
-                self.spriteListTable.setItem(i, 0, QtGui.QTableWidgetItem(self.trackedSprites[i][DICT_SPRITE_NAME]))
+                self.delegateList.append(ListDelegate())
+                self.spriteListTable.setItemDelegateForRow(i, self.delegateList[-1])
+                
+#                 self.spriteListModel.setItem(i, 0, QtGui.QStandardItem(np.string_(i)))
+                ## set sprite name
+                self.spriteListModel.setItem(i, 0, QtGui.QStandardItem(self.trackedSprites[i][DICT_SPRITE_NAME]))
+    
+                ## set sprite icon
+                numFrames = len(preloadedSpritePatches[i])
+                framePadding = int(numFrames*0.2)
+                bestFrame = framePadding
+                for j in xrange(framePadding, numFrames-framePadding) :
+                    patchSize = preloadedSpritePatches[i][j]['patch_size']
+                    bestPatchSize = preloadedSpritePatches[i][bestFrame]['patch_size']
+                    if np.abs(patchSize[0]*1.0/patchSize[1]-1) < np.abs(bestPatchSize[0]*1.0/bestPatchSize[1]-1) and np.prod(patchSize) > 60**2 :
+                        bestFrame = j
+                        
+                squareImg = np.ascontiguousarray(self.getSquareSpriteIconImg(bgImg, preloadedSpritePatches[i][bestFrame]))
+                self.spriteListTable.itemDelegateForRow(i).setIconImage(squareImg)
+                
+                if DICT_MEDIAN_COLOR in self.trackedSprites[i].keys() :
+                    col = self.trackedSprites[i][DICT_MEDIAN_COLOR]
+#                     self.spriteListTable.item(i, 0).setBackground(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
+                    self.spriteListTable.itemDelegateForRow(i).setBackgroundColor(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
+                    
+            self.currentSpriteIdx = 0
+                    
         else :
-            self.spriteListTable.setRowCount(1)
-            self.spriteListTable.setItem(0, 0, QtGui.QTableWidgetItem("No tracked sprites"))
+            self.spriteListModel.setRowCount(1)
+#             self.spriteListModel.setColumnCount(1)
+            
+            self.delegateList = [ListDelegate()]
+            self.spriteListTable.setItemDelegateForRow(0, self.delegateList[-1])
+            self.spriteListModel.setItem(0, 0, QtGui.QStandardItem("No tracked sprites"))
+            
+    def getSquareSpriteIconImg(self, bgImg, spritePatch) :
+        spriteTopLeft = spritePatch['top_left_pos']
+        spritePatchSize = spritePatch['patch_size']
+        spriteIconImg = bgImg[spriteTopLeft[0] : spriteTopLeft[0] + spritePatchSize[0], spriteTopLeft[1] : spriteTopLeft[1] + spritePatchSize[1], [2, 1, 0]]
+        spriteIconImg[spritePatch['visible_indices'][:, 0], spritePatch['visible_indices'][:, 1], :] = spritePatch['sprite_colors'][:, 0:-1]
+        sizeDiff = np.abs(spritePatchSize[0] - spritePatchSize[1])
+        additiveBeginning = int(np.floor(sizeDiff/2.0))
+        if spritePatchSize[0] > spritePatchSize[1] :
+            newTopLeft = np.copy(spriteTopLeft)
+            newTopLeft[1] -= additiveBeginning
+            newPatchSize = np.copy(spritePatchSize)
+            newPatchSize[1] += sizeDiff
+            squareIconImg = bgImg[newTopLeft[0] : newTopLeft[0] + newPatchSize[0], newTopLeft[1] : newTopLeft[1] + newPatchSize[1], [2, 1, 0]]
+            squareIconImg[:, additiveBeginning:additiveBeginning+spritePatchSize[1], :] = spriteIconImg
+            finalPatch = np.ones((squareIconImg.shape[0], squareIconImg.shape[1], 4), dtype=np.uint8)*255
+            finalPatch[:, :, :-1] = squareIconImg
+#             return np.array(squareIconImg, dtype=np.uint8)
+        elif spritePatchSize[0] < spritePatchSize[1] :
+            newTopLeft = np.copy(spriteTopLeft)
+            newTopLeft[0] -= additiveBeginning
+            newPatchSize = np.copy(spritePatchSize)
+            newPatchSize[0] += sizeDiff
+            squareIconImg = bgImg[newTopLeft[0] : newTopLeft[0] + newPatchSize[0], newTopLeft[1] : newTopLeft[1] + newPatchSize[1], [2, 1, 0]]
+            squareIconImg[additiveBeginning:additiveBeginning+spritePatchSize[0], :, :] = spriteIconImg
+            finalPatch = np.ones((squareIconImg.shape[0], squareIconImg.shape[1], 4), dtype=np.uint8)*255
+            finalPatch[:, :, :-1] = squareIconImg
+#             return np.array(squareIconImg, dtype=np.uint8)
+        else :
+            finalPatch = np.ones((spriteIconImg.shape[0], spriteIconImg.shape[1], 4), dtype=np.uint8)*255
+            finalPatch[:, :, :-1] = spriteIconImg
+        
+#         figure(); imshow(finalPatch)
+        return cv2.resize(finalPatch, (self.LIST_SECTION_SIZE, self.LIST_SECTION_SIZE), interpolation=cv2.INTER_AREA) #finalPatch
+#         return np.array(spriteIconImg, dtype=np.uint8)
             
     def closeEvent(self, event) :
         print "closing"
@@ -1020,68 +1574,8 @@ class Window(QtGui.QWidget):
     def keyPressEvent(self, e) :
         if e.key() == e.key() >= QtCore.Qt.Key_0 and e.key() <= QtCore.Qt.Key_9 :
             pressedIdx = np.mod(e.key()-int(QtCore.Qt.Key_0), int(QtCore.Qt.Key_9))
-            print "pressed key", pressedIdx#,
-#             if pressedIdx >= 0 and pressedIdx < len(self.trackedSprites) :
-#                 print "i.e. sprite", self.trackedSprites[pressedIdx][DICT_SPRITE_NAME]
-# #                 self.toggleSpriteSemantics(pressedIdx)
-#                 ## spawn new sprite
-#                 self.addNewSpriteTrackToSequence(pressedIdx)
-
-#                 if len(self.generatedSequence) > 0 :
-#                     ## extend existing sprites if necessary
-#                     if self.frameIdx > len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH :
-#                         print self.frameIdx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]), self.EXTEND_LENGTH, 1, self.frameIdx-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1
-#                         self.leaveOneOutExtension(len(self.generatedSequence)-1, 
-#                                                   self.frameIdx-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1, 
-#                                                   len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
-                        
-#                     ## now toggle new sprite to visible
-#                     print "toggling new sprite"
-#                     extendMode = {}
-#                     extendMode[len(self.generatedSequence)-1] = self.DO_TOGGLE
-#                     self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), 
-#                                         self.frameIdx, self.resolveCompatibilityBox.isChecked())
-                    
-#                     ## check whether desired label has been reached and if not extend (need to actually do this but for now just check the sprite frame is larger than 0)
-#                     while self.generatedSequence[-1][DICT_SEQUENCE_FRAMES][-1] < 1 :
-#                         print "extending new sprite because semantics not reached"
-#                         ## extend existing sprites if necessary
-#                         if len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1 > len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH :
-#                             self.leaveOneOutExtension(len(self.generatedSequence)-1, 
-#                                                       len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1, 
-#                                                       len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
-                            
-#                         extendMode[len(self.generatedSequence)-1] = self.DO_EXTEND
-#                         self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), 
-#                                             len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1, 
-#                                             self.resolveCompatibilityBox.isChecked())
-                        
-#                     print "toggling back new sprite"
-#                     ## toggle it back to not visible
-#                     extendMode[len(self.generatedSequence)-1] = self.DO_TOGGLE
-#                     self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), 
-#                                         len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1)
-                    
-#                     additionalFrames = len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES]) - len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])
-#                     if additionalFrames < 0 :
-#                         ## extend new sprite's sequence to match total sequence's length
-#                         print "extending new sprite's sequence"
-#                         extendMode = {}
-#                         extendMode[len(self.generatedSequence)-1] = self.DO_EXTEND
-#                         self.extendSequence(self.extendSequenceTracksSemantics(-additionalFrames+1, extendMode), 
-#                                             len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1)
-#                     elif additionalFrames > 0 :
-#                         ## extend existing sprites' sequences to match the new total sequence's length because of newly added sprite
-#                         print "extending existing sprites' sequences"
-#                         extendMode = {}
-#                         for i in xrange(len(self.generatedSequence)-1) :
-#                             extendMode[i] = self.DO_EXTEND
-#                         self.extendSequence(self.extendSequenceTracksSemantics(additionalFrames+1, extendMode), 
-#                                             len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
-                        
-#                 self.showFrame(self.frameIdx)                        
-#             else :
-#                 print
+            print "pressed key", pressedIdx
+            
         elif e.key() == QtCore.Qt.Key_Space :
             if len(self.generatedSequence) > 0 :
                 self.frameIdxSpinBox.setValue(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
@@ -1091,22 +1585,22 @@ class Window(QtGui.QWidget):
             if len(self.generatedSequence) > 0 :
                 self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), self.frameIdx)
         elif e.key() == QtCore.Qt.Key_T :
-            print self.currentSpriteIdx
+#             print self.currentSpriteIdx
             if self.currentSpriteIdx >= 0 and self.currentSpriteIdx < len(self.trackedSprites) :
-                print "spawining sprite", self.trackedSprites[self.currentSpriteIdx][DICT_SPRITE_NAME]
+                print "spawning sprite", self.trackedSprites[self.currentSpriteIdx][DICT_SPRITE_NAME]
                 ## spawn new sprite
                 self.addNewSpriteTrackToSequence(self.currentSpriteIdx)
 
                 if len(self.generatedSequence) > 0 :
                     ## extend existing sprites if necessary
                     if self.frameIdx > len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH :
-                        print self.frameIdx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]), self.EXTEND_LENGTH, 1, self.frameIdx-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1
+#                         print self.frameIdx, len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]), self.EXTEND_LENGTH, 1, self.frameIdx-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1
                         self.leaveOneOutExtension(len(self.generatedSequence)-1, 
                                                   self.frameIdx-(len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH) + 1, 
                                                   len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])-1)
                         
                     ## now toggle new sprite to visible
-                    print "toggling new sprite"
+#                     print "toggling new sprite"
                     extendMode = {}
                     extendMode[len(self.generatedSequence)-1] = self.DO_TOGGLE
                     self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), 
@@ -1114,7 +1608,7 @@ class Window(QtGui.QWidget):
                     
                     ## check whether desired label has been reached and if not extend (need to actually do this but for now just check the sprite frame is larger than 0)
                     while self.generatedSequence[-1][DICT_SEQUENCE_FRAMES][-1] < 1 :
-                        print "extending new sprite because semantics not reached"
+#                         print "extending new sprite because semantics not reached"
                         ## extend existing sprites if necessary
                         if len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1 > len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) - self.EXTEND_LENGTH :
                             self.leaveOneOutExtension(len(self.generatedSequence)-1, 
@@ -1126,7 +1620,7 @@ class Window(QtGui.QWidget):
                                             len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1, 
                                             self.resolveCompatibilityBox.isChecked())
                         
-                    print "toggling back new sprite"
+#                     print "toggling back new sprite"
                     ## toggle it back to not visible
                     extendMode[len(self.generatedSequence)-1] = self.DO_TOGGLE
                     self.extendSequence(self.extendSequenceTracksSemantics(self.EXTEND_LENGTH, extendMode), 
@@ -1135,14 +1629,14 @@ class Window(QtGui.QWidget):
                     additionalFrames = len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES]) - len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES])
                     if additionalFrames < 0 :
                         ## extend new sprite's sequence to match total sequence's length
-                        print "extending new sprite's sequence"
+#                         print "extending new sprite's sequence"
                         extendMode = {}
                         extendMode[len(self.generatedSequence)-1] = self.DO_EXTEND
                         self.extendSequence(self.extendSequenceTracksSemantics(-additionalFrames+1, extendMode), 
                                             len(self.generatedSequence[-1][DICT_SEQUENCE_FRAMES])-1)
                     elif additionalFrames > 0 :
                         ## extend existing sprites' sequences to match the new total sequence's length because of newly added sprite
-                        print "extending existing sprites' sequences"
+#                         print "extending existing sprites' sequences"
                         extendMode = {}
                         for i in xrange(len(self.generatedSequence)-1) :
                             extendMode[i] = self.DO_EXTEND
@@ -1186,8 +1680,8 @@ class Window(QtGui.QWidget):
                                                                                   spriteSequence.reshape((1, len(spriteSequence)))-1)), dtype=int), 
                                                               np.array((overlappingSpriteTotLength, spriteTotLength)))
                     
-                    print np.array(np.vstack((overlappingSpriteSequence.reshape((1, len(overlappingSpriteSequence))),
-                                                                    spriteSequence.reshape((1, len(spriteSequence))))), dtype=int)
+#                     print np.array(np.vstack((overlappingSpriteSequence.reshape((1, len(overlappingSpriteSequence))),
+#                                                                     spriteSequence.reshape((1, len(spriteSequence))))), dtype=int)
                     
 #                     print frameRanges
                     
@@ -1201,14 +1695,14 @@ class Window(QtGui.QWidget):
                         pairingShift = frameRanges[sortIdxs, 0][1]-frameRanges[sortIdxs, 0][0]
                         totalDistance = precomputedDistances[pairing][pairingShift]
                 
-                        print "lala", totalDistance, precomputedDistances[pairing][pairingShift], spriteIdxs, pairing, pairingShift, spriteIdx, frameRanges[sortIdxs, 0]
+#                         print "lala", totalDistance, precomputedDistances[pairing][pairingShift], spriteIdxs, pairing, pairingShift, spriteIdx, frameRanges[sortIdxs, 0]
                         
                         ## find all pairs of frame that show the same label as the desired label (i.e. [0.0, 1.0])
                         tmp = np.all(overlappingSpriteSemanticLabels[overlappingSpriteSequence] == spriteSemanticLabels[spriteSequence], axis=1)
                         if totalDistance > 5.0 : 
                             areSpritesCompatible[np.all((np.all(spriteSemanticLabels[spriteSequence] == np.array([0.0, 1.0]), axis=1), tmp), axis=0)] = True
-                    else :
-                        print "sprites not overlapping"
+#                     else :
+#                         print "sprites not overlapping"
 #                     print "areSpritesCompatible", areSpritesCompatible
                     
                     isSpriteCompatible = np.all((isSpriteCompatible, areSpritesCompatible), axis=0)
@@ -1237,10 +1731,10 @@ class Window(QtGui.QWidget):
                 
                 ## do dynamic programming optimization
                 unaries, pairwise = getMRFCosts(semanticLabels, desiredSemantics[i], desiredStartFrame, len(desiredSemantics[i]))
-                print unaries
-                print pairwise
-                print desiredSemantics[i]
-                print desiredStartFrame, len(desiredSemantics[i])
+#                 print unaries
+#                 print pairwise
+#                 print desiredSemantics[i]
+#                 print desiredStartFrame, len(desiredSemantics[i])
                 
                 ## now try and do the optimization completely vectorized
                 ## number of edges connected to each label node of variable n (pairwise stores node at arrow tail as cols and at arrow head as rows)
@@ -1265,14 +1759,14 @@ class Window(QtGui.QWidget):
                 minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)#solveMRF(unaries, pairwise)
                 
                 if resolveCompatibility :
-                    print "resolving compatibility", i, startingFrame
+#                     print "resolving compatibility", i, startingFrame
                     
                     self.frameInfo.setText("Optimizing sequence - resolving compatibility")
                     QtCore.QCoreApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
                     
                     isSpriteCompatible = self.checkIsCompatible(i, minCostTraversal, startingFrame)
-                    print isSpriteCompatible
-                    print len(isSpriteCompatible)
+#                     print isSpriteCompatible
+#                     print len(isSpriteCompatible)
                     count = 0
                     while True :
                         count += 1
@@ -1284,12 +1778,12 @@ class Window(QtGui.QWidget):
                         #     gwv.showCustomGraph(unaries)
                             tic = time.time()
                             minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)#solveMRF(unaries, pairwise)
-                            if True or np.mod(count, 20) == 0 :
-                                print "iteration", count, ": solved traversal for sprite", i , "in", time.time() - tic, 
-                                print "num of zeros:", len(np.argwhere(minCostTraversal == 0)); sys.stdout.flush()
+#                             if True or np.mod(count, 20) == 0 :
+#                                 print "iteration", count, ": solved traversal for sprite", i , "in", time.time() - tic, 
+#                                 print "num of zeros:", len(np.argwhere(minCostTraversal == 0)); sys.stdout.flush()
                             
-                                self.frameInfo.setText("Optimizing sequence - resolving compatibility " + np.string_(count))
-                                QtCore.QCoreApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+#                                 self.frameInfo.setText("Optimizing sequence - resolving compatibility " + np.string_(count))
+#                                 QtCore.QCoreApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
 #                                 print minCostTraversal, minCost
 
                             isSpriteCompatible = self.checkIsCompatible(i, minCostTraversal, startingFrame)
@@ -1299,7 +1793,7 @@ class Window(QtGui.QWidget):
                             print "done"
 #                             print minCostTraversal
                             break
-                    gwv.showCustomGraph(unaries[1:, :])
+#                     gwv.showCustomGraph(unaries[1:, :])
                 
                 ## update dictionary
                 # don't take the first frame of the minCostTraversal as it would just repeat the last seen frame
@@ -1318,7 +1812,9 @@ class Window(QtGui.QWidget):
                 self.frameInfo.setText("Generated sequence length: " + np.string_(len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES])))
                 QtCore.QCoreApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
                     
-                print "sequence with", len(self.generatedSequence), "sprites, extended by", len(desiredSemantics[i])-1, "frames"
+#                 print "sequence with", len(self.generatedSequence), "sprites, extended by", len(desiredSemantics[i])-1, "frames"
+
+        self.setSemanticsToDraw()
     
     def extendSequenceTracksSemantics(self, length, mode) :
         spriteSemantics = {}
@@ -1364,7 +1860,7 @@ class Window(QtGui.QWidget):
     
     def addNewSpriteTrackToSequence(self, spriteIdx) :
         if spriteIdx >= 0 and spriteIdx < len(self.trackedSprites) :
-            print "adding new sprite to sequence"
+#             print "adding new sprite to sequence"
             self.generatedSequence.append({
                                            DICT_SPRITE_IDX:spriteIdx,
                                            DICT_SPRITE_NAME:self.trackedSprites[spriteIdx][DICT_SPRITE_NAME],
@@ -1399,10 +1895,41 @@ class Window(QtGui.QWidget):
             self.doPlaySequence = False
             self.playSequenceButton.setIcon(self.playIcon)
             self.playTimer.stop()
+            
+            self.frameInfo.setText(self.oldInfoText)
         else :
+            self.lastRenderTime = time.time()
             self.doPlaySequence = True
             self.playSequenceButton.setIcon(self.pauseIcon)
             self.playTimer.start()
+            
+            self.oldInfoText = self.frameInfo.text()
+            
+    def setRenderFps(self, value) :
+        self.playTimer.setInterval(1000/value)
+        
+    def setSemanticsToDraw(self) :
+        if len(self.generatedSequence) > 0  :
+            self.semanticsToDraw = []
+            numOfFrames = 1
+            for i in xrange(0, len(self.generatedSequence)):
+                spriteIdx = self.generatedSequence[i][DICT_SPRITE_IDX]
+                if DICT_MEDIAN_COLOR in self.trackedSprites[spriteIdx].keys() :
+                    col = self.trackedSprites[spriteIdx][DICT_MEDIAN_COLOR]
+                else :
+                    col = np.array([0, 0, 0])
+                ## if the sprite is ever visible
+                if len(np.argwhere(self.generatedSequence[i][DICT_SEQUENCE_FRAMES] != 0)) > 0 :
+                    self.semanticsToDraw.append({
+                                                    DRAW_COLOR:col,
+                                                    DRAW_FIRST_FRAME:np.argwhere(self.generatedSequence[i][DICT_SEQUENCE_FRAMES] != 0)[0, 0], 
+                                                    DRAW_LAST_FRAME:np.argwhere(self.generatedSequence[i][DICT_SEQUENCE_FRAMES] != 0)[-1, 0]
+                                                })
+                else :
+                    print "invisible sprite in generated sequence"
+                numOfFrames = np.max((numOfFrames, len(self.generatedSequence[i][DICT_SEQUENCE_FRAMES])-0.5))
+                
+            self.frameIdxSlider.setSemanticsToDraw(self.semanticsToDraw, numOfFrames)
         
     def createGUI(self) :
         
@@ -1416,7 +1943,7 @@ class Window(QtGui.QWidget):
         self.frameInfo = QtGui.QLabel("Info text")
         self.frameInfo.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
         
-        self.frameIdxSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.frameIdxSlider = SemanticsSlider(QtCore.Qt.Horizontal)
         self.frameIdxSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
         self.frameIdxSlider.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.frameIdxSlider.setTickPosition(QtGui.QSlider.TicksBothSides)
@@ -1432,15 +1959,42 @@ class Window(QtGui.QWidget):
         self.frameIdxSpinBox.setSingleStep(1)
         self.frameIdxSpinBox.installEventFilter(self)
         
-        self.spriteListTable = QtGui.QTableWidget(1, 1)
-        self.spriteListTable.horizontalHeader().setStretchLastSection(True)
-        self.spriteListTable.setHorizontalHeaderItem(0, QtGui.QTableWidgetItem("Tracked sprites"))
-        self.spriteListTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.Fixed)
-        self.spriteListTable.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+        self.renderFpsSpinBox = QtGui.QSpinBox()
+        self.renderFpsSpinBox.setRange(1, 60)
+        self.renderFpsSpinBox.setSingleStep(1)
+        self.renderFpsSpinBox.setValue(30)
+        
+#         self.spriteListTable = QtGui.QTableWidget(1, 1)
+#         self.spriteListTable.horizontalHeader().setStretchLastSection(True)
+#         self.spriteListTable.setHorizontalHeaderItem(0, QtGui.QTableWidgetItem("Tracked sprites"))
+#         self.spriteListTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.Fixed)
+#         self.spriteListTable.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.MinimumExpanding)
+#         self.spriteListTable.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+#         self.spriteListTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+#         self.spriteListTable.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
+#         self.spriteListTable.setItem(0, 0, QtGui.QTableWidgetItem("No tracked sprites"))
+#         self.spriteListTable.setStyleSheet("QTableWidget::item:selected { background-color: rgba(255, 0, 0, 30) }")
+
+
+        self.spriteListModel = QtGui.QStandardItemModel(1, 1)
+        self.spriteListModel.setHorizontalHeaderLabels(["Tracked sprites"])
+        self.spriteListModel.setItem(0, 0, QtGui.QStandardItem("No tracked sprites"))
+        
+        self.spriteListTable = QtGui.QTableView()
         self.spriteListTable.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
         self.spriteListTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.spriteListTable.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
-        self.spriteListTable.setItem(0, 0, QtGui.QTableWidgetItem("No tracked sprites"))
+        self.spriteListTable.horizontalHeader().setStretchLastSection(True)
+        self.spriteListTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.Fixed)
+        self.spriteListTable.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.MinimumExpanding)
+        self.spriteListTable.verticalHeader().setVisible(False)
+        self.spriteListTable.verticalHeader().setDefaultSectionSize(self.LIST_SECTION_SIZE)
+
+        self.delegateList = [ListDelegate()]
+        self.spriteListTable.setItemDelegateForRow(0, self.delegateList[-1])
+        self.spriteListTable.setModel(self.spriteListModel)
+        
+        
         
         self.drawSpritesBox = QtGui.QCheckBox("Render Sprites")
         self.drawSpritesBox.setChecked(True)
@@ -1455,7 +2009,7 @@ class Window(QtGui.QWidget):
         self.playSequenceButton.setIcon(self.playIcon)
         
         self.autoSaveBox = QtGui.QCheckBox("Autosave")
-        self.autoSaveBox.setChecked(True)
+#         self.autoSaveBox.setChecked(True)
         
         self.deleteSequenceButton = QtGui.QPushButton("Delete Sequence")
         
@@ -1469,8 +2023,12 @@ class Window(QtGui.QWidget):
         self.frameIdxSpinBox.valueChanged[int].connect(self.frameIdxSlider.setValue)
         self.frameIdxSpinBox.valueChanged[int].connect(self.showFrame)
         
-        self.spriteListTable.currentCellChanged.connect(self.changeSprite)
-        self.spriteListTable.cellPressed.connect(self.changeSprite)
+        self.renderFpsSpinBox.valueChanged[int].connect(self.setRenderFps)
+        
+#         self.spriteListTable.currentCellChanged.connect(self.changeSprite)
+#         self.spriteListTable.cellPressed.connect(self.changeSprite)
+        
+        self.spriteListTable.clicked.connect(self.changeSprite)
         
         self.playSequenceButton.clicked.connect(self.playSequenceButtonPressed)
         self.deleteSequenceButton.clicked.connect(self.deleteGeneratedSequence)
@@ -1478,15 +2036,31 @@ class Window(QtGui.QWidget):
         ## LAYOUTS ##
         
         mainLayout = QtGui.QHBoxLayout()
+        
+        renderingControls = QtGui.QGroupBox("Rendering Controls")
+        renderingControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
+        renderingControlsLayout = QtGui.QVBoxLayout()
+        renderingControlsLayout.addWidget(self.drawSpritesBox)
+        renderingControlsLayout.addWidget(self.drawBBoxBox)
+        renderingControlsLayout.addWidget(self.drawCenterBox)
+        renderingControlsLayout.addWidget(self.playSequenceButton)
+        renderingControlsLayout.addWidget(self.renderFpsSpinBox)
+        renderingControls.setLayout(renderingControlsLayout)
+        
+        
+        sequenceControls = QtGui.QGroupBox("Sequence Controls")
+        sequenceControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
+        sequenceControlsLayout = QtGui.QVBoxLayout()
+        sequenceControlsLayout.addWidget(self.resolveCompatibilityBox)
+        sequenceControlsLayout.addWidget(self.deleteSequenceButton)
+        sequenceControlsLayout.addWidget(self.autoSaveBox)
+        sequenceControls.setLayout(sequenceControlsLayout)
+        
+        
         controlsLayout = QtGui.QVBoxLayout()
         controlsLayout.addWidget(self.spriteListTable)
-        controlsLayout.addWidget(self.drawSpritesBox)
-        controlsLayout.addWidget(self.drawBBoxBox)
-        controlsLayout.addWidget(self.drawCenterBox)
-        controlsLayout.addWidget(self.playSequenceButton)
-        controlsLayout.addWidget(self.autoSaveBox)
-        controlsLayout.addWidget(self.deleteSequenceButton)
-        controlsLayout.addWidget(self.resolveCompatibilityBox)
+        controlsLayout.addWidget(renderingControls)
+        controlsLayout.addWidget(sequenceControls)
         
         sliderLayout = QtGui.QHBoxLayout()
         sliderLayout.addWidget(self.frameIdxSlider)
@@ -1511,12 +2085,548 @@ class Window(QtGui.QWidget):
 # <codecell>
 
 window = Window()
-window.show() 
+window.show()
 app.exec_()
 
 # <codecell>
 
-figure(); imshow(preloadedSpritePatches[-1][-1]['sprite_patch'])
+## try the compositing
+sprite1 = np.array(Image.open(dataPath+dataSet+"blue_orange_bus1-maskedFlow-blended/frame-02880.png"))
+sprite2 = np.array(Image.open(dataPath+dataSet+"white_bus1-maskedFlow-blended/frame-01047.png"))
+bgPlusSprite1 = sprite1[:, :, :-1]*(sprite1[:, :, -1].reshape((720, 1280, 1))/255.0)
+bgPlusSprite1 = np.array(bgPlusSprite1 + Image.open(dataPath+dataSet+"median.png")*(1.0-sprite1[:, :, -1].reshape((720, 1280, 1))/255.0), dtype=np.uint8)
+
+bgPlusSprite2 = sprite2[:, :, :-1]*(sprite2[:, :, -1].reshape((720, 1280, 1))/255.0)
+bgPlusSprite2 = np.array(bgPlusSprite2 + Image.open(dataPath+dataSet+"median.png")*(1.0-sprite2[:, :, -1].reshape((720, 1280, 1))/255.0), dtype=np.uint8)
+
+diffColor1 = np.sum((Image.open(dataPath+dataSet+"median.png")-bgPlusSprite1)**2, axis=-1)
+diffColor2 = np.sum((Image.open(dataPath+dataSet+"median.png")-bgPlusSprite2)**2, axis=-1)
+# diffColor1 += (sprite1[:, :, -1] == 0)*np.max(diffColor1)
+# diffColor2 += (sprite2[:, :, -1] == 0)*np.max(diffColor2)
+
+print np.max(diffColor1)
+print np.max(diffColor2)
+thresh = 200
+# firstIf = np.argwhere(diffColor2 > thresh)
+# secondIf = np.argwhere(diffColor1 > thresh)
+# thridIf = np.argwhere(diffColor1 > diffColor2)
+
+# result = np.copy(bgPlusSprite2)
+# result[firstIf[:, 0], firstIf[:, 1], :] = bgPlusSprite2[firstIf[:, 0], firstIf[:, 1], :]
+# result[secondIf[:, 0], secondIf[:, 1], :] = bgPlusSprite1[secondIf[:, 0], secondIf[:, 1], :]
+# result[thridIf[:, 0], thridIf[:, 1], :] = bgPlusSprite1[thridIf[:, 0], thridIf[:, 1], :]
+
+result = np.zeros_like(bgPlusSprite1)
+for i in xrange(diffColor1.shape[0]) :
+    for j in xrange(diffColor1.shape[1]) :
+            
+        if diffColor1[i, j] > thresh and sprite1[i, j, -1] != 0 :
+            result[i, j, :] = sprite1[i, j, :-1]
+            
+        if diffColor2[i, j] > thresh and sprite2[i, j, -1] != 0 :
+            result[i, j, :] = sprite2[i, j, :-1]
+            
+#         elif diffColor1[i, j] > diffColor2[i, j] :
+#             result[i, j, :] = bgPlusSprite1[i, j, :]
+            
+#         else :
+#             result[i, j, :] = bgPlusSprite2[i, j, :]
+            
+figure(); imshow(result)
+# Image.fromarray(result).save("/home/ilisescu/result.png")
+
+# <codecell>
+
+def multivariateNormal(data, mean, var, normalized = True) :
+    if (data.shape[0] != mean.shape[0] or np.any(data.shape[0] != np.array(var.shape)) 
+        or len(var.shape) != 2 or var.shape[0] != var.shape[1]) :
+        raise Exception("Data shapes don't agree data(" + np.string_(data.shape) + ") mean(" + np.string_(mean.shape) + 
+                        ") var(" + np.string_(var.shape) + ")")
+        
+    D = float(data.shape[0])
+    n = (1/(np.power(2.0*np.pi, D/2.0)*np.sqrt(np.linalg.det(var))))
+    if normalized :
+        p = n*np.exp(-0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1))
+    else :
+        p = np.exp(-0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1))
+        
+    return p
+
+def minusLogMultivariateNormal(data, mean, var, normalized = True) :
+    if (data.shape[0] != mean.shape[0] or np.any(data.shape[0] != np.array(var.shape)) 
+        or len(var.shape) != 2 or var.shape[0] != var.shape[1]) :
+        raise Exception("Data shapes don't agree data(" + np.string_(data.shape) + ") mean(" + np.string_(mean.shape) + 
+                        ") var(" + np.string_(var.shape) + ")")
+    
+    D = float(data.shape[0])
+    n = -0.5*np.log(np.linalg.det(var))-(D/2.0)*np.log(2.0*np.pi)
+    if normalized :
+        p = n -0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1)
+    else :
+        p = -0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1)
+        
+    return -p
+
+def vectorisedMinusLogMultiNormal(dataPoints, means, var, normalized = True) :
+    if (dataPoints.shape[1] != means.shape[1] or np.any(dataPoints.shape[1] != np.array(var.shape)) 
+        or len(var.shape) != 2 or var.shape[0] != var.shape[1]) :
+        raise Exception("Data shapes don't agree data(" + np.string_(dataPoints.shape) + ") mean(" + np.string_(means.shape) + 
+                        ") var(" + np.string_(var.shape) + ")")
+    
+    D = float(dataPoints.shape[1])
+    n = -0.5*np.log(np.linalg.det(var))-(D/2.0)*np.log(2.0*np.pi)
+    
+    ## this does 0.5*dot(dot(data-mean, varInv), data-mean)
+    varInv = np.linalg.inv(var)
+    dataMinusMean = dataPoints-means
+    
+    ps = []
+    for i in xrange(int(D)) :
+        ps.append(np.sum((dataMinusMean)*varInv[:, i], axis=-1))
+    
+    ps = np.array(ps).T
+    
+    ps = -0.5*np.sum(ps*(dataMinusMean), axis=-1)
+    
+    if normalized :
+        return n-ps
+    else :
+        return -ps
+
+# <codecell>
+
+## used for enlarging bbox used to decide size of patch around it (percentage)
+PATCH_BORDER = 0.4
+def getSpritePatch(sprite, frameKey, frameWidth, frameHeight) :
+    """Computes sprite patch based on its bbox
+    
+        \t  sprite      : dictionary containing relevant sprite data
+        \t  frameKey    : the key of the frame the sprite patch is taken from
+        \t  frameWidth  : width of original image
+        \t  frameHeight : height of original image
+           
+        return: spritePatch, offset, patchSize,
+                [left, top, bottom, right] : array of booleans telling whether the expanded bbox touches the corresponding border of the image"""
+    
+    ## get the bbox for the current sprite frame, make it larger and find the rectangular patch to work with
+    ## boundaries of the patch [min, max]
+    
+    ## returns sprite patch based on bbox and returns it along with the offset [x, y] and it's size [rows, cols]
+    
+    ## make bbox bigger
+    largeBBox = sprite[DICT_BBOXES][frameKey].T
+    ## move to origin
+    largeBBox = np.dot(np.array([[-sprite[DICT_BBOX_CENTERS][frameKey][0], 1.0, 0.0], 
+                                 [-sprite[DICT_BBOX_CENTERS][frameKey][1], 0.0, 1.0]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    ## make bigger
+    largeBBox = np.dot(np.array([[0.0, 1.0 + PATCH_BORDER, 0.0], 
+                                 [0.0, 0.0, 1.0 + PATCH_BORDER]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    ## move back tooriginal center
+    largeBBox = np.dot(np.array([[sprite[DICT_BBOX_CENTERS][frameKey][0], 1.0, 0.0], 
+                                 [sprite[DICT_BBOX_CENTERS][frameKey][1], 0.0, 1.0]]), 
+                        np.vstack((np.ones((1, largeBBox.shape[1])), largeBBox)))
+    
+    xBounds = np.zeros(2); yBounds = np.zeros(2)
+    
+    ## make sure xBounds are in between 0 and width and yBounds are in between 0 and height
+    xBounds[0] = np.max((0, np.min(largeBBox[0, :])))
+    xBounds[1] = np.min((frameWidth, np.max(largeBBox[0, :])))
+    yBounds[0] = np.max((0, np.min(largeBBox[1, :])))
+    yBounds[1] = np.min((frameHeight, np.max(largeBBox[1, :])))
+    
+    offset = np.array([np.round(np.array([xBounds[0], yBounds[0]]))], dtype=int).T # [x, y]
+    patchSize = np.array(np.round(np.array([yBounds[1]-yBounds[0], xBounds[1]-xBounds[0]])), dtype=int) # [rows, cols]
+    
+    spritePatch = np.array(Image.open(sprite[DICT_FRAMES_LOCATIONS][frameKey]))[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :]
+    
+    return spritePatch, offset, patchSize, [np.min((largeBBox)[0, :]) > 0.0 ,
+                                            np.min((largeBBox)[1, :]) > 0.0 ,
+                                            np.max((largeBBox)[1, :]) < frameHeight,
+                                            np.max((largeBBox)[0, :]) < frameWidth]
+
+
+def getPatchPriors(bgPatch, spritePatch, offset, patchSize, sprite, frameKey, prevFrameKey = None, prevFrameAlphaLoc = "",
+                   prevMaskImportance = 0.8, prevMaskDilate = 13, prevMaskBlurSize = 31, prevMaskBlurSigma = 2.5,
+                   diffPatchImportance = 0.015, diffPatchMultiplier = 1000.0, useOpticalFlow = True, useDiffPatch = False) :
+    """Computes priors for background and sprite patches
+    
+        \t  bgPatch             : background patch
+        \t  spritePatch         : sprite patch
+        \t  offset              : [x, y] position of patches in the coordinate system of the original images
+        \t  patchSize           : num of [rows, cols] per patches
+        \t  sprite              : dictionary containing relevant sprite data
+        \t  frameKey            : the key of the frame the sprite patch is taken from
+        \t  prevFrameKey        : the key of the previous frame
+        \t  prevFrameAlphaLoc   : location of the previous frame
+        \t  prevMaskImportance  : balances the importance of the prior based on the remapped mask of the previous frame
+        \t  prevMaskDilate      : amount of dilation to perform on previous frame's mask
+        \t  prevMaskBlurSize    : size of the blurring kernel perfomed on previous frame's mask
+        \t  prevMaskBlurSigma   : variance of the gaussian blurring perfomed on previous frame's mask
+        \t  diffPatchImportance : balances the importance of the prior based on difference of patch to background
+        \t  diffPatchMultiplier : multiplier that changes the scaling of the difference based cost
+        \t  useOpticalFlow      : modify sprite prior by the mask of the previous frame
+        \t  useDiffPatch        : modify bg prior by difference of sprite to bg patch
+           
+        return: bgPrior, spritePrior"""
+    
+    ## get uniform prior for bg patch
+    bgPrior = -np.log(np.ones(patchSize)/np.prod(patchSize))
+    
+    ## get prior for sprite patch
+    spritePrior = np.zeros(patchSize)
+    xs = np.ndarray.flatten(np.arange(patchSize[1], dtype=float).reshape((patchSize[1], 1)).repeat(patchSize[0], axis=-1))
+    ys = np.ndarray.flatten(np.arange(patchSize[0], dtype=float).reshape((1, patchSize[0])).repeat(patchSize[1], axis=0))
+    data = np.vstack((xs.reshape((1, len(xs))), ys.reshape((1, len(ys)))))
+    
+    ## get covariance and means of prior on patch by using the bbox
+    spriteBBox = sprite[DICT_BBOXES][frameKey].T
+    segment1 = spriteBBox[:, 0] - spriteBBox[:, 1]
+    segment2 = spriteBBox[:, 1] - spriteBBox[:, 2]
+    sigmaX = np.linalg.norm(segment1)/3.7
+    sigmaY = np.linalg.norm(segment2)/3.7
+    
+    rotRadians = sprite[DICT_BBOX_ROTATIONS][frameKey]
+    
+    rotMat = np.array([[np.cos(rotRadians), -np.sin(rotRadians)], [np.sin(rotRadians), np.cos(rotRadians)]])
+    
+    means = np.reshape(sprite[DICT_BBOX_CENTERS][frameKey], (2, 1)) - offset
+    covs = np.dot(np.dot(rotMat.T, np.array([[sigmaX**2, 0.0], [0.0, sigmaY**2]])), rotMat)
+    
+    spritePrior = np.reshape(minusLogMultivariateNormal(data, means, covs, True), patchSize, order='F')
+    
+    ## change the spritePrior using optical flow stuff
+    if useOpticalFlow and prevFrameKey != None :
+        prevFrameName = sprite[DICT_FRAMES_LOCATIONS][prevFrameKey].split('/')[-1]
+        nextFrameName = sprite[DICT_FRAMES_LOCATIONS][frameKey].split('/')[-1]
+        
+        if os.path.isfile(prevFrameAlphaLoc+prevFrameName) :
+            alpha = np.array(Image.open(prevFrameAlphaLoc+prevFrameName))[:, :, -1]/255.0
+
+            flow = cv2.calcOpticalFlowFarneback(cv2.cvtColor(np.array(Image.open(dataPath+dataSet+nextFrameName)), cv2.COLOR_RGB2GRAY), 
+                                                cv2.cvtColor(np.array(Image.open(dataPath+dataSet+prevFrameName)), cv2.COLOR_RGB2GRAY), 
+                                                0.5, 3, 15, 3, 5, 1.1, 0)
+        
+            ## remap alpha according to flow
+            remappedFg = cv2.remap(alpha, flow[:, :, 0]+allXs, flow[:, :, 1]+allYs, cv2.INTER_LINEAR)
+            ## get patch
+            remappedFgPatch = remappedFg[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1]]
+            remappedFgPatch = cv2.GaussianBlur(cv2.morphologyEx(remappedFgPatch, cv2.MORPH_DILATE, 
+                                                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (prevMaskDilate, prevMaskDilate))), 
+                                               (prevMaskBlurSize, prevMaskBlurSize), prevMaskBlurSigma)
+
+            spritePrior = (1.0-prevMaskImportance)*spritePrior + prevMaskImportance*(-np.log((remappedFgPatch+0.01)/np.sum(remappedFgPatch+0.01)))
+    
+    
+    if useDiffPatch :
+        ## change the background prior to give higher cost for pixels to be classified as background if the difference between bgPatch and spritePatch is high
+        diffPatch = np.reshape(vectorisedMinusLogMultiNormal(spritePatch.reshape((np.prod(patchSize), 3)), 
+                                                             bgPatch.reshape((np.prod(patchSize), 3)), 
+                                                             np.eye(3)*diffPatchMultiplier, True), patchSize)
+        bgPrior = (1.0-diffPatchImportance)*bgPrior + diffPatchImportance*diffPatch
+        
+    
+    return bgPrior, spritePrior
+
+# <codecell>
+
+print trackedSprites[5][DICT_SPRITE_NAME]
+
+# <codecell>
+
+fullSprite1Prior = np.zeros(bgImage.shape[0:2])
+fullSprite1Prior[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1]] = np.copy(1.0-spritePrior/np.max(spritePrior))
+gwv.showCustomGraph(fullSprite1Prior)
+
+# <codecell>
+
+bgImage = np.array(Image.open(dataPath+dataSet+"median.png"))
+## Sprite below
+# f = 2889
+# spriteIdx = 2
+# f = 4758
+# spriteIdx = 4
+# f = 4377
+# spriteIdx = 5
+# f = 1046      ### composite this with C to show compositing efficiencey against simple thresholding
+# spriteIdx = 8
+# f = 4731
+# spriteIdx = 4
+# f = 2933
+# spriteIdx = 2
+f = 850      ### composite this with A to show compositing efficiencey against simple thresholding
+spriteIdx = 8
+# f = 1190     ### composite this with B to show compositing efficiencey against simple thresholding
+# spriteIdx = 8
+sprite1 = np.array(Image.open(dataPath+dataSet+trackedSprites[spriteIdx][DICT_SPRITE_NAME]+"-maskedFlow-blended/frame-{0:05d}.png".format(f+1)))
+spritePatch, offset, patchSize, touchedBorders = getSpritePatch(trackedSprites[spriteIdx], f, bgImage.shape[1], bgImage.shape[0])
+bgPrior, spritePrior = getPatchPriors(bgImage[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :], 
+                                      spritePatch, offset, patchSize, trackedSprites[spriteIdx], f)
+fullSprite1Prior = np.zeros(bgImage.shape[0:2])
+fullSprite1Prior[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1]] = np.copy(1.0-spritePrior/np.max(spritePrior))
+fullSprite1Prior /= np.max(fullSprite1Prior)
+
+## Sprite above
+# f = 1046
+# f = 996
+# spriteIdx = 8
+# f = 1182     ### this is C
+# spriteIdx = 8
+# f = 2933
+# spriteIdx = 2
+# f = 4373
+# spriteIdx = 5
+f = 2927     ### this is A
+spriteIdx = 2
+# f = 1046
+# spriteIdx = 8
+# f = 4648     ### this is B
+# spriteIdx = 1
+sprite2 = np.array(Image.open(dataPath+dataSet+trackedSprites[spriteIdx][DICT_SPRITE_NAME]+"-maskedFlow-blended/frame-{0:05d}.png".format(f+1)))
+spritePatch, offset, patchSize, touchedBorders = getSpritePatch(trackedSprites[spriteIdx], f, bgImage.shape[1], bgImage.shape[0])
+bgPrior, spritePrior = getPatchPriors(bgImage[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :], 
+                                      spritePatch, offset, patchSize, trackedSprites[spriteIdx], f)
+fullSprite2Prior = np.zeros(bgImage.shape[0:2])
+fullSprite2Prior[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1]] = np.copy(1.0-spritePrior/np.max(spritePrior))
+fullSprite2Prior /= np.max(fullSprite2Prior)
+
+
+#######
+
+bgImage = np.array(Image.open(dataPath+dataSet+"median.png"))
+
+compositedImage = np.copy(sprite1[:, :, :-1])*(sprite1[:, :, -1].reshape((720, 1280, 1))/255.0)
+compositedImage += np.copy(bgImage)*(1.0-sprite1[:, :, -1].reshape((720, 1280, 1))/255.0)
+compositedImage = (compositedImage*(1.0-sprite2[:, :, -1].reshape((720, 1280, 1))/255.0) + 
+                   np.copy(sprite2[:, :, :-1])*(sprite2[:, :, -1].reshape((720, 1280, 1))/255.0))
+compositedImage = np.array(compositedImage, dtype=np.uint8)
+
+thresh = 1.2
+# thresh = 1.31
+ambiguousIdxs = np.argwhere(np.all(((sprite1[:, :, -1] != 0).reshape((sprite1.shape[0], sprite1.shape[1], 1)),
+                         (sprite2[:, :, -1] != 0).reshape((sprite2.shape[0], sprite2.shape[1], 1))), axis=0)[:, :, -1])
+
+alpha = 0.0235
+kSize = 15
+sigma = 11
+diffSprite1 = np.zeros(bgImage.shape[0:2])
+diffSprite1[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1]] = np.sqrt(np.sum((bgImage[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :]-
+                                                                        sprite1[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :-1])**2, axis=-1))
+diffSprite1 = cv2.GaussianBlur(diffSprite1, (kSize, kSize), sigma)
+# diffSprite1 = cv2.adaptiveBilateralFilter(np.array(diffSprite1, dtype=np.float32), (8, 8), 5)
+diffSprite1 = diffSprite1*alpha+(1.0-alpha)*fullSprite1Prior
+
+diffSprite2 = np.zeros(bgImage.shape[0:2])
+diffSprite2[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1]] = np.sqrt(np.sum((bgImage[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :]-
+                                                                        sprite2[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :-1])**2, axis=-1))
+diffSprite2 = cv2.GaussianBlur(diffSprite2, (kSize, kSize), sigma)#*1.2
+diffSprite2 = diffSprite2*alpha+(1.0-alpha)*fullSprite2Prior
+
+print np.max(diffSprite1), np.max(diffSprite2)
+
+tmp = np.zeros(bgImage.shape[0:2])
+for (i, j) in ambiguousIdxs :
+    if diffSprite2[i, j] > thresh :
+        compositedImage[i, j, :] = sprite2[i, j, :-1]
+        tmp[i, j] = 1
+    elif diffSprite1[i, j] > thresh :
+        compositedImage[i, j, :] = sprite1[i, j, :-1]
+        tmp[i, j] = 2
+    elif diffSprite1[i, j] > diffSprite2[i, j] :
+        compositedImage[i, j, :] = sprite1[i, j, :-1]
+        tmp[i, j] = 2
+    else :
+        compositedImage[i, j, :] = sprite2[i, j, :-1]
+        tmp[i, j] = 1
+#     if diffSprite1 > thresh:
+#         compositedImage[i, j, :] = sprite1[i, j, :-1]
+
+#     if diffSprite2 > thresh :
+#         compositedImage[i, j, :] = sprite2[i, j, :-1]
+
+
+
+
+colorDiffSprite1 = np.sqrt(np.sum((bgImage/255.0 - sprite1[:, :, :-1]/255.0)**2, axis=-1))
+colorDiffSprite1 *= sprite1[:, :, -1]
+colorDiffSprite1 = cv2.GaussianBlur(colorDiffSprite1, (kSize, kSize), sigma)
+
+thresholdedSprite1Alpha = np.zeros((bgImage.shape[0], bgImage.shape[1], 1))
+thresh = 39.0
+for (i, j) in np.argwhere(sprite1[:, :, -1] != 0) :
+#     if diffSprite1[i, j] > thresh :
+#     if np.sqrt(np.sum((bgImage[i, j, :] - sprite1[i, j, :-1])**2, axis=-1)) > thresh :
+    if colorDiffSprite1[i, j] > thresh :
+        thresholdedSprite1Alpha[i, j] = 1
+
+        
+colorDiffSprite2 = np.sqrt(np.sum((bgImage/255.0 - sprite2[:, :, :-1]/255.0)**2, axis=-1))
+colorDiffSprite2 *= sprite2[:, :, -1]
+colorDiffSprite2 = cv2.GaussianBlur(colorDiffSprite2, (kSize, kSize), sigma)
+
+thresholdedSprite2Alpha = np.zeros((bgImage.shape[0], bgImage.shape[1], 1))
+for (i, j) in np.argwhere(sprite2[:, :, -1] != 0) :
+#     if diffSprite2[i, j] > thresh :
+#     if np.sqrt(np.sum((bgImage[i, j, :] - sprite2[i, j, :-1])**2, axis=-1)) > thresh :
+    if colorDiffSprite2[i, j] > thresh :
+        thresholdedSprite2Alpha[i, j] = 1
+    
+figure(); imshow(compositedImage)
+# gwv.showCustomGraph(tmp)
+# gwv.showCustomGraph(diffSprite1)
+# gwv.showCustomGraph(diffSprite2)
+# gwv.showCustomGraph(thresholdedSprite1Alpha[:, :, -1])
+# gwv.showCustomGraph(thresholdedSprite2Alpha[:, :, -1])
+figure(); imshow(np.array(bgImage*(1.0-np.any((thresholdedSprite1Alpha == 1, thresholdedSprite2Alpha == 1), axis=0)) + 
+                          sprite1[:, :, :-1]*(np.all((thresholdedSprite1Alpha == 1, thresholdedSprite2Alpha == 0), axis=0)) +
+                          sprite2[:, :, :-1]*thresholdedSprite2Alpha, dtype=np.uint8))
+
+# <codecell>
+
+figure()
+imshow(np.concatenate((cv2.cvtColor(np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave1/frame-00025.png")), cv2.COLOR_RGB2GRAY).reshape((720, 1280, 1)),
+                       cv2.cvtColor(np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave2/frame-00009.png")), cv2.COLOR_RGB2GRAY).reshape((720, 1280, 1)),
+                       cv2.cvtColor(np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave3/frame-00028.png")), cv2.COLOR_RGB2GRAY).reshape((720, 1280, 1))), axis=-1))
+
+# <codecell>
+
+print np.concatenate((np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave1/frame-00025.png"))[:, :, 0].reshape((720, 1280, 1)), 
+                       np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave2/frame-00009.png"))[:, :, 1].reshape((720, 1280, 1)), 
+                       np.array(Image.open("/media/ilisescu/Data1/PhD/data/wave3/frame-00028.png"))[:, :, 2].reshape((720, 1280, 1))), axis=-1).shape
+
+# <codecell>
+
+# tmp = np.zeros(compositedImage.shape[0:2])
+# tmp[ambiguousIdxs[:, 0],ambiguousIdxs[:, 1]] = 1
+gwv.showCustomGraph(tmp)
+
+# <codecell>
+
+# Image.fromarray(compositedImage).save("/home/ilisescu/PhD/compositedVsThresholded/whiteBusVsWhiteBus/composited.png")
+Image.fromarray(np.array(bgImage*(1.0-np.any((thresholdedSprite1Alpha == 1, thresholdedSprite2Alpha == 1), axis=0)) + 
+                          sprite1[:, :, :-1]*(np.all((thresholdedSprite1Alpha == 1, thresholdedSprite2Alpha == 0), axis=0)) +
+                          sprite2[:, :, :-1]*thresholdedSprite2Alpha, dtype=np.uint8)).save("/home/ilisescu/PhD/compositedVsThresholded/whiteBusVsWhiteBus/thresholded6.png")
+
+# <codecell>
+
+gwv.showCustomGraph(colorDiffSprite2)
+
+# <codecell>
+
+gwv.showCustomGraph(diffSprite2)
+gwv.showCustomGraph(fullSprite2Prior)
+alpha = 0.05
+gwv.showCustomGraph(diffSprite2*alpha+(1.0-alpha)*(fullSprite2Prior/np.max(fullSprite2Prior)))
+
+# <codecell>
+
+# gwv.showCustomGraph(cv2.morphologyEx(tmp, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
+diffSprite1 = np.zeros(bgImage.shape[0:2])
+diffSprite1[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1]] = np.sqrt(np.sum((bgImage[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :]-
+                                                                        sprite1[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :-1])**2, axis=-1))
+diffSprite2 = np.zeros(bgImage.shape[0:2])
+diffSprite2[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1]] = np.sqrt(np.sum((bgImage[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :]-
+                                                                        sprite2[ambiguousIdxs[:, 0], ambiguousIdxs[:, 1], :-1])**2, axis=-1))
+gwv.showCustomGraph(cv2.GaussianBlur(diffSprite1, (15, 15), 5))
+
+# <codecell>
+
+tmp = np.zeros_like(bgPlusSprite1)
+ambiguousIdxs = np.argwhere(np.all(((sprite1[:, :, -1] != 0).reshape((sprite1.shape[0], sprite1.shape[1], 1)),
+                         (sprite2[:, :, -1] != 0).reshape((sprite2.shape[0], sprite2.shape[1], 1))), axis=0)[:, :, -1])
+tmp[idxs[:, 0], idxs[:, 1]] = 255
+figure(); imshow(tmp)
+
+# <codecell>
+
+np.all(((sprite1[:, :, -1] != 0).reshape((sprite1.shape[0], sprite1.shape[1], 1)),
+                         (sprite2[:, :, -1] != 0).reshape((sprite2.shape[0], sprite2.shape[1], 1))), axis=-1).shape
+
+# <codecell>
+
+figure(); imshow(diffColor2)
+
+# <codecell>
+
+im = window.spriteListTable.itemDelegateForRow(11).iconImage
+qim = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32)
+qim.save("tralala.png")
+
+# <codecell>
+
+for i in xrange(5):#len(preloadedSpritePatches)) :
+    numFrames = len(preloadedSpritePatches[i])
+    framePadding = int(numFrames*0.2)
+    bestFrame = framePadding
+    for j in xrange(framePadding, numFrames-framePadding) :
+        patchSize = preloadedSpritePatches[i][j]['patch_size']
+        bestPatchSize = preloadedSpritePatches[i][bestFrame]['patch_size']
+        if np.abs(patchSize[0]*1.0/patchSize[1]-1) < np.abs(bestPatchSize[0]*1.0/bestPatchSize[1]-1) and  np.prod(patchSize) > 50**2 :
+#             print np.abs(patchSize[0]*1.0/patchSize[1]-1)
+            bestFrame = j
+    print i, bestFrame, 
+    spritePatch = preloadedSpritePatches[i][bestFrame]
+    reconstructedImg = np.ascontiguousarray(np.zeros((spritePatch['patch_size'][0], spritePatch['patch_size'][1], 4)), dtype=np.uint8)
+    reconstructedImg[spritePatch['visible_indices'][:, 0], spritePatch['visible_indices'][:, 1], :] = spritePatch['sprite_colors']
+    print reconstructedImg.shape
+#     figure(); imshow(reconstructedImg)
+
+# <codecell>
+
+figure(); imshow(reconstructedImg)
+
+# <codecell>
+
+print window.generatedSequence[0][DICT_SEQUENCE_FRAMES]
+print np.argwhere(window.generatedSequence[0][DICT_SEQUENCE_FRAMES] != 0)[0, 0]
+print np.argwhere(window.generatedSequence[0][DICT_SEQUENCE_FRAMES] != 0)[-1, 0]
+
+# <codecell>
+
+img = np.array(Image.open("/media/ilisescu/Data1/PhD/data/clouds_subsample10/median.png"))
+
+spriteImg = np.array(Image.open("/media/ilisescu/Data1/PhD/data/clouds_subsample10/cloud2-masked-blended/frame-19501.png"))
+spriteColorLocations = np.argwhere(spriteImg[:, :, -1] != 0)
+img[spriteColorLocations[:, 0], spriteColorLocations[:, 1], :] = spriteImg[spriteColorLocations[:, 0], spriteColorLocations[:, 1], :-1]
+    
+Image.fromarray(np.array(img, dtype=np.uint8)).save("tralala2.png")
+
+# <codecell>
+
+bgImg = np.array(Image.open(dataPath + dataSet + "median.png"))
+# bgImg = QtGui.QImage(bgImg.data, bgImg.shape[1], bgImg.shape[0], 
+#                                            bgImg.strides[0], QtGui.QImage.Format_RGB888)
+# img = QtGui.QImage(1280, 720, QtGui.QImage.Format_ARGB32)
+# painter = QtGui.QPainter(img)
+
+# <codecell>
+
+for frame in arange(len(window.generatedSequence[0][DICT_SEQUENCE_FRAMES])) : #[251:252] :
+#     img.fill(QtGui.QColor.fromRgb(255, 255, 255, 0))
+    img = np.array(Image.open(dataPath + dataSet + "median.png"))
+#     painter.drawImage(QtCore.QPoint(0, 0), bgImg)
+    for s in xrange(len(window.generatedSequence)) :
+        realFrameIdx = int(window.generatedSequence[s][DICT_SEQUENCE_FRAMES][frame]-1)
+        if realFrameIdx >= 0 :
+            spriteIdx = window.generatedSequence[s][DICT_SPRITE_IDX]
+            sprite = window.trackedSprites[spriteIdx]
+            frameName = sprite[DICT_FRAMES_LOCATIONS][np.sort(sprite[DICT_FRAMES_LOCATIONS].keys())[realFrameIdx]].split(os.sep)[-1]
+            spriteImg = np.array(Image.open(dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked/" + frameName))
+            spriteColorLocations = np.argwhere(spriteImg[:, :, -1] != 0)
+            img[spriteColorLocations[:, 0], spriteColorLocations[:, 1], :] = spriteImg[spriteColorLocations[:, 0], spriteColorLocations[:, 1], :-1]
+    
+    Image.fromarray(np.array(img, dtype=np.uint8)).save(dataPath + dataSet + "generatedSequenceImgs/frame-{0:05}".format(frame+1) + ".png")
+    sys.stdout.write('\r' + "Done " + np.string_(frame) + " frame of " + np.string_(len(window.generatedSequence[0][DICT_SEQUENCE_FRAMES])))
+    sys.stdout.flush()
+
+# <codecell>
+
+figure(); imshow(spriteImg[:, :, :-1])
+
+# <codecell>
+
+figure(); imshow(np.array(reconstructedImg, dtype=np.uint8))
 
 # <codecell>
 

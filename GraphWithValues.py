@@ -9,7 +9,7 @@ import numpy as np
 
 # <codecell>
 
-def showCustomGraph(img, title = None, integerAxes = True) :
+def showCustomGraph(img, title = None, showColorbar = False, integerAxes = True, colorbarLimits = None) :
     
     if title != None :
         fig = plt.figure(title)
@@ -17,7 +17,7 @@ def showCustomGraph(img, title = None, integerAxes = True) :
         fig = plt.figure()
     
     ax = fig.add_subplot(111)
-    ax.imshow(img, interpolation='nearest')
+    cax = ax.imshow(img, interpolation='nearest')
     
     numrows, numcols = img.shape
     def format_coord(x, y):
@@ -26,15 +26,21 @@ def showCustomGraph(img, title = None, integerAxes = True) :
         if col>=0 and col<numcols and row>=0 and row<numrows:
             z = img[row,col]
             if integerAxes :
-                return 'x=%d, y=%d, z=%1.4f'%(x+0.5, y+0.5, z)
+                return 'row=%d, col=%d, z=%1.4f'%(y+0.5, x+0.5, z)
             else :
-                return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x, y, z)
+                return 'row=%1.4f, col=%1.4f, z=%1.4f'%(y, x, z)
         else:
             if integerAxes :
-                return 'x=%d, y=%d'%(x+0.5, y+0.5)
+                return 'row=%d, col=%d'%(y+0.5, x+0.5)
             else :
-                return 'x=%1.4f, y=%1.4f'%(x, y)
+                return 'row=%1.4f, col=%1.4f'%(y, x)
     
     ax.format_coord = format_coord
+    
+    if showColorbar :
+        cax = fig.colorbar(cax)
+        if colorbarLimits != None :
+            cax.set_clim(colorbarLimits)
+    
     plt.show()
 
