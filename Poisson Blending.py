@@ -30,13 +30,19 @@ DICT_FRAME_SEMANTIC_TOGGLE = 'frame_semantic_toggle'# stores the frame index in 
 dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "clouds_subsample10/"
 # dataSet = "theme_park_cloudy/"
+<<<<<<< HEAD
 # dataSet = "theme_park_sunny/"
 dataSet = "wave1/"
 # preloadedSpritePatches = list(np.load(dataPath + dataSet + "preloadedSpritePatches.npy"))
+=======
+dataSet = "theme_park_sunny/"
+preloadedSpritePatches = list(np.load(dataPath + dataSet + "preloadedSpritePatches.npy"))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
 ## load 
+<<<<<<< HEAD
 # trackedSprites = []
 # for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
 #     trackedSprites.append(np.load(sprite).item())
@@ -47,6 +53,12 @@ trackedSprites = []
 for sprite in np.sort(glob.glob(dataPath + dataSet + "semantic_sequence*.npy")) :
     trackedSprites.append(np.load(sprite).item())
     print trackedSprites[-1]['semantic_sequence_name']
+=======
+trackedSprites = []
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
+    trackedSprites.append(np.load(sprite).item())
+    print trackedSprites[-1][DICT_SPRITE_NAME]
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -121,6 +133,7 @@ def blend(img_target, img_source, img_mask, offset=(0, 0)):
 # <codecell>
 
 imgSize = np.array(np.asarray(PIL.Image.open(dataPath+dataSet+"median.png")).shape[0:2])
+<<<<<<< HEAD
 # inputFolderSuffix = "-masked"#-blended/"
 inputFolderSuffix = "-maskedFlow"#-blended/"
 for spriteIdx in arange(len(trackedSprites))[-1:] :
@@ -130,11 +143,20 @@ for spriteIdx in arange(len(trackedSprites))[-1:] :
     
     if not os.path.isdir(dataPath+dataSet+spriteName+inputFolderSuffix+"-blended/"):
         os.makedirs(dataPath+dataSet+spriteName+inputFolderSuffix+"-blended/")
+=======
+for spriteIdx in arange(len(trackedSprites)) :
+    sortedKeys = np.sort(trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS].keys())
+    spriteName = trackedSprites[spriteIdx][DICT_SPRITE_NAME]
+    
+    if not os.path.isdir(dataPath+dataSet+spriteName+"-masked-blended/"):
+        os.makedirs(dataPath+dataSet+spriteName+"-masked-blended/")
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
     for frameIdx in arange(len(sortedKeys)) :
         frameName = trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][sortedKeys[frameIdx]].split(os.sep)[-1]
         
         
+<<<<<<< HEAD
         im = np.array(PIL.Image.open(dataPath+dataSet+spriteName+inputFolderSuffix+"/"+frameName))
         
         visiblePixelsGlobalIndices = np.argwhere(im[:, :, -1] != 0)
@@ -143,6 +165,11 @@ for spriteIdx in arange(len(trackedSprites))[-1:] :
 #         topLeftPos = np.copy(preloadedSpritePatches[spriteIdx][frameIdx]['top_left_pos'])
 #         patchSize = np.copy(preloadedSpritePatches[spriteIdx][frameIdx]['patch_size'])
 #         visiblePixelsGlobalIndices = preloadedSpritePatches[spriteIdx][frameIdx]['visible_indices']+topLeftPos
+=======
+        topLeftPos = np.copy(preloadedSpritePatches[spriteIdx][frameIdx]['top_left_pos'])
+        patchSize = np.copy(preloadedSpritePatches[spriteIdx][frameIdx]['patch_size'])
+        visiblePixelsGlobalIndices = preloadedSpritePatches[spriteIdx][frameIdx]['visible_indices']+topLeftPos
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
         ## when the mask touches the border of the patch there's some weird white halos going on so I enlarge the patch slightly
         ## not sure what happens when the patch goes outside of the bounds of the original image...
@@ -153,15 +180,23 @@ for spriteIdx in arange(len(trackedSprites))[-1:] :
         patchSize[(topLeftPos+patchSize) > imgSize] += (imgSize-(topLeftPos+patchSize))[(topLeftPos+patchSize) > imgSize]
         
         
+<<<<<<< HEAD
         img_target = np.asarray(PIL.Image.open(dataPath+dataSet+"median.png"))[:, :, 0:3]
         img_target.flags.writeable = True
         
         img_mask = np.asarray(PIL.Image.open(dataPath+dataSet+spriteName+inputFolderSuffix+"/"+frameName))[topLeftPos[0]:topLeftPos[0]+patchSize[0], 
                                                                                                            topLeftPos[1]:topLeftPos[1]+patchSize[1], -1]
+=======
+        img_target = np.asarray(PIL.Image.open(dataPath+dataSet+"median.png"))
+        img_target.flags.writeable = True
+        
+        img_mask = np.asarray(PIL.Image.open(dataPath+dataSet+spriteName+"-masked/"+frameName))[topLeftPos[0]:topLeftPos[0]+patchSize[0], topLeftPos[1]:topLeftPos[1]+patchSize[1], -1]
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         img_mask.flags.writeable = True
         ## make sure that borders of mask are assigned to bg
         img_mask[0, :] = 0; img_mask[-1, :] = 0; img_mask[:, 0] = 0; img_mask[:, -1] = 0
         
+<<<<<<< HEAD
         img_source = np.asarray(PIL.Image.open(trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][sortedKeys[frameIdx]]))[topLeftPos[0]:topLeftPos[0]+patchSize[0], 
                                                                                                                         topLeftPos[1]:topLeftPos[1]+patchSize[1], :]
         
@@ -173,6 +208,9 @@ for spriteIdx in arange(len(trackedSprites))[-1:] :
 #                                                                                                          topLeftPos[1]:topLeftPos[1]+patchSize[1], :]*(1.0-mask), dtype=uint8)
         
             
+=======
+        img_source = np.asarray(PIL.Image.open(trackedSprites[spriteIdx][DICT_FRAMES_LOCATIONS][sortedKeys[frameIdx]]))[topLeftPos[0]:topLeftPos[0]+patchSize[0], topLeftPos[1]:topLeftPos[1]+patchSize[1], :]
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         img_source.flags.writeable = True
         
         
@@ -180,23 +218,34 @@ for spriteIdx in arange(len(trackedSprites))[-1:] :
         
         
         maskedFinal = np.zeros((img_target.shape[0], img_target.shape[1], 4), dtype=np.uint8)
+<<<<<<< HEAD
         maskedFinal[visiblePixelsGlobalIndices[:, 0], visiblePixelsGlobalIndices[:, 1], :-1] = img_ret[visiblePixelsGlobalIndices[:, 0], 
                                                                                                        visiblePixelsGlobalIndices[:, 1], :]
         maskedFinal[visiblePixelsGlobalIndices[:, 0], visiblePixelsGlobalIndices[:, 1], -1] = 255
         
         PIL.Image.fromarray(np.uint8(maskedFinal)).save(dataPath+dataSet+spriteName+inputFolderSuffix+"-blended/"+frameName)
 #         figure(); imshow(maskedFinal)
+=======
+        maskedFinal[visiblePixelsGlobalIndices[:, 0], visiblePixelsGlobalIndices[:, 1], :-1] = img_ret[visiblePixelsGlobalIndices[:, 0], visiblePixelsGlobalIndices[:, 1], :]
+        maskedFinal[visiblePixelsGlobalIndices[:, 0], visiblePixelsGlobalIndices[:, 1], -1] = 255
+        
+        PIL.Image.fromarray(np.uint8(maskedFinal)).save(dataPath+dataSet+spriteName+"-masked-blended/"+frameName)
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         del img_mask
         del img_source
         del img_target
         del maskedFinal
         del img_ret
+<<<<<<< HEAD
 #         del sourceImg
 #         del mask
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
         sys.stdout.write('\r' + "Processed image " + np.string_(frameIdx) + " (" + np.string_(len(sortedKeys)) + ")")
         sys.stdout.flush()
     print
+<<<<<<< HEAD
     print "done with sprite", trackedSprites[spriteIdx]['semantic_sequence_name']
 
 # <codecell>
@@ -213,4 +262,7 @@ del maskedFinal
 del img_ret
 del sourceImg
 del mask
+=======
+    print "done with sprite", trackedSprites[spriteIdx][DICT_SPRITE_NAME]
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 

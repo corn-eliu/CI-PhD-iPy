@@ -46,7 +46,10 @@ PATCH_BORDER = 0.4
 
 ## load the tracked sprites
 DICT_SPRITE_NAME = 'sprite_name'
+<<<<<<< HEAD
 DICT_SEQUENCE_NAME = "semantic_sequence_name"
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 # DICT_BBOX_AFFINES = 'bbox_affines'
 DICT_BBOXES = 'bboxes'
 DICT_BBOX_ROTATIONS = 'bbox_rotations'
@@ -56,6 +59,7 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 DICT_MEDIAN_COLOR = 'median_color'
 
+<<<<<<< HEAD
 # dataPath = "/home/ilisescu/PhD/data/"
 # dataSet = "havana/"
 dataPath = "/media/ilisescu/Data1/PhD/data/"
@@ -67,6 +71,14 @@ dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "wave3/"
 # dataSet = "windows/"
 dataSet = "digger/"
+=======
+dataPath = "/home/ilisescu/PhD/data/"
+dataSet = "havana/"
+# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+# dataSet = "theme_park_sunny/"
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -78,15 +90,22 @@ BL_IDX = 3
 frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
 numOfFrames = len(frameLocs)
 numOfTrackedSprites = 0
+<<<<<<< HEAD
 bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))[:, :, :3]
 
 allXs = arange(bgImage.shape[1], dtype=float32).reshape((1, bgImage.shape[1])).repeat(bgImage.shape[0], axis=0)
 allYs = arange(bgImage.shape[0], dtype=float32).reshape((bgImage.shape[0], 1)).repeat(bgImage.shape[1], axis=1)
+=======
+bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 trackedSprites = []
 for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
+<<<<<<< HEAD
     print trackedSprites[-1][DICT_SEQUENCE_NAME]
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 ## merge tracked sprite with bg
 spriteIdx = 0
@@ -94,6 +113,7 @@ sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 
 # <codecell>
 
+<<<<<<< HEAD
 # ## finds mean color for each sprite
 # bgIm = np.array(Image.open(dataPath+dataSet+"median.png"))
 
@@ -136,6 +156,65 @@ sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 #     print 
 #     print dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SEQUENCE_NAME] + ".npy", trackedSprites[i][DICT_MEDIAN_COLOR]
 #     np.save(dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SEQUENCE_NAME] + ".npy", trackedSprites[i])
+=======
+bgIm = np.array(Image.open(dataPath+dataSet+"median.png"))
+
+for i in arange(len(trackedSprites)) :
+    maskDir = dataPath + dataSet + trackedSprites[i][DICT_SPRITE_NAME] + "-masked-blended"
+    
+    medianCols = []
+    count = 0
+    lenSprite = len(trackedSprites[i][DICT_FRAMES_LOCATIONS])
+    
+    for f in np.sort(trackedSprites[i][DICT_FRAMES_LOCATIONS].keys())[int(lenSprite*0.15):-int(lenSprite*0.15)] :
+        count += 1
+        frameName = trackedSprites[i][DICT_FRAMES_LOCATIONS][f].split(os.sep)[-1]
+        im = np.array(cv2.cvtColor(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), cv2.COLOR_BGRA2RGBA), dtype=np.uint8)
+#         center = np.array(trackedSprites[i][DICT_BBOX_CENTERS][f], dtype=int)[::-1]
+#         squarePadding = 20
+#         rows = np.ndarray.flatten(arange((center[0])-squarePadding, 
+#                                          (center[0])+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
+#         cols = np.ndarray.flatten(arange((center[1])-squarePadding, 
+#                                          (center[1])+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
+        
+#         medianCols.append(np.median(im[rows, cols, :-1], axis=0))
+        
+#         visiblePixels = np.argwhere(im[:, :, -1] != 0)
+#         medianCols.append(np.mean(im[visiblePixels[:, 0], visiblePixels[:, 1], :-1], axis=0))
+
+        diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
+        relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
+    
+        medianCols.append(np.mean(im[relevantPixels[:, 0], relevantPixels[:, 1], :-1], axis=0))
+        
+        sys.stdout.write('\r' + "Processed image " + np.string_(count) + " (" + np.string_(len(trackedSprites[i][DICT_FRAMES_LOCATIONS])) + ")")
+        sys.stdout.flush()
+    
+    medianRGB = np.median(np.array(medianCols), axis=0)
+    normed = medianRGB/np.linalg.norm(medianRGB)
+    
+    trackedSprites[i][DICT_MEDIAN_COLOR] = np.array(255/np.max(normed)*normed, dtype=int)
+    
+    print 
+    print dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i][DICT_MEDIAN_COLOR]
+    np.save(dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i])
+
+# <codecell>
+
+# print im.shape
+# print np.median(np.array(medianCols), axis=0)
+# imshow(im[rows, cols, :-1].reshape((5, 5, 3)))
+figure(); imshow(im)
+figure(); imshow(bgIm)
+diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
+relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
+gwv.showCustomGraph(diffIm/np.max(diffIm)> 0.5)
+
+# <codecell>
+
+print rows
+print cols
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -1687,12 +1766,21 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 # DICT_START_FRAME = 'start_frame'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 
+<<<<<<< HEAD
 dataPath = "/home/ilisescu/PhD/data/"
 dataSet = "havana/"
 # dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "clouds_subsample10/"
 # dataSet = "theme_park_cloudy/"
 # dataSet = "theme_park_sunny/"
+=======
+# dataPath = "/home/ilisescu/PhD/data/"
+# dataSet = "havana/"
+dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+dataSet = "theme_park_sunny/"
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -1711,7 +1799,11 @@ for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 
 ## merge tracked sprite with bg
+<<<<<<< HEAD
 spriteIdx = 2
+=======
+spriteIdx = 0
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 showFigs = True
 

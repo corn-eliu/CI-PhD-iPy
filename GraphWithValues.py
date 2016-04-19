@@ -9,7 +9,11 @@ import numpy as np
 
 # <codecell>
 
+<<<<<<< HEAD
 def showCustomGraph(img, title = None, showColorbar = False, integerAxes = True, colorbarLimits = None) :
+=======
+def showCustomGraph(img, title = None, showColorbar = False, integerAxes = True) :
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
     
     if title != None :
         fig = plt.figure(title)
@@ -39,8 +43,11 @@ def showCustomGraph(img, title = None, showColorbar = False, integerAxes = True,
     
     if showColorbar :
         cax = fig.colorbar(cax)
+<<<<<<< HEAD
         if colorbarLimits != None :
             cax.set_clim(colorbarLimits)
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
     
     plt.show()
 

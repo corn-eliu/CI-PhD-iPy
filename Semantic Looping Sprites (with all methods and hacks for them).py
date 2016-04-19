@@ -56,9 +56,13 @@ BL_IDX = 3
 trackedSprites = []
 for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
+<<<<<<< HEAD:Semantic Looping Sprites (with all methods and hacks for them).py
     if DICT_SPRITE_NAME not in trackedSprites[-1] :
         del trackedSprites[-1]
 #     print trackedSprites[-1][DICT_SPRITE_NAME]
+=======
+    print trackedSprites[-1][DICT_SPRITE_NAME]
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36:Semantic Looping.py
 
 # <codecell>
 
@@ -504,8 +508,12 @@ precomputedDistances = np.load(dataPath + dataSet + "precomputedDistances.npy").
 # del preloadedSpritePatches
 # preloadedSpritePatches = []
 # for sprite in trackedSprites :
+<<<<<<< HEAD:Semantic Looping Sprites (with all methods and hacks for them).py
 # #     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked-blended"
 #     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-maskedFlow-blended"
+=======
+#     maskDir = dataPath + dataSet + sprite[DICT_SPRITE_NAME] + "-masked-blended"
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36:Semantic Looping.py
 #     del currentSpriteImages
 #     currentSpriteImages = []
 #     for frameKey in np.sort(sprite[DICT_FRAMES_LOCATIONS].keys()) :
@@ -2090,6 +2098,7 @@ app.exec_()
 
 # <codecell>
 
+<<<<<<< HEAD:Semantic Looping Sprites (with all methods and hacks for them).py
 ## try the compositing
 sprite1 = np.array(Image.open(dataPath+dataSet+"blue_orange_bus1-maskedFlow-blended/frame-02880.png"))
 sprite2 = np.array(Image.open(dataPath+dataSet+"white_bus1-maskedFlow-blended/frame-01047.png"))
@@ -2549,6 +2558,8 @@ figure(); imshow(diffColor2)
 
 # <codecell>
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36:Semantic Looping.py
 im = window.spriteListTable.itemDelegateForRow(11).iconImage
 qim = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32)
 qim.save("tralala.png")

@@ -772,6 +772,7 @@ for frame in xrange(len(frameLocs)) :
 
 # <codecell>
 
+<<<<<<< HEAD
 ## resize frames
 desiredSize = [1100, 1100, 4]
 for frame in np.sort(glob.glob(dataPath+"precomputedSemanticsGraph/frame-*.png")) :
@@ -785,6 +786,8 @@ for frame in np.sort(glob.glob(dataPath+"precomputedSemanticsGraph/frame-*.png")
 
 # <codecell>
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 class ImageLabel(QtGui.QLabel) :
     
     def __init__(self, text="", parent=None):
@@ -877,11 +880,19 @@ class Window(QtGui.QWidget):
 #             print "Number of frames in folder doesn't match number of frames in graph"
 #             self.close()
         
+<<<<<<< HEAD
         self.frameLocs = np.sort(glob.glob(location+"frame-*"))#frameLocs
         
         self.allFrames = []
         for frame in self.frameLocs :
             self.allFrames.append(np.ascontiguousarray(cv2.resize(cv2.imread(frame, cv2.CV_LOAD_IMAGE_UNCHANGED), (720, 720), interpolation=cv2.INTER_AREA)))
+=======
+        self.frameLocs = frameLocs
+        
+        self.allFrames = []
+        for frame in self.frameLocs :
+            self.allFrames.append(np.ascontiguousarray(cv2.imread(frame, cv2.CV_LOAD_IMAGE_UNCHANGED)))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
     def renderOneFrame(self) :
         ## get background image
@@ -933,12 +944,15 @@ class Window(QtGui.QWidget):
                 print "show semantics", pressedIdx
                 self.currentSemantics = pressedIdx
                 sys.stdout.flush()
+<<<<<<< HEAD
         if e.key() == QtCore.Qt.Key_Left :
             self.currentSemantics = 2
         elif e.key() == QtCore.Qt.Key_Right :
             self.currentSemantics = 3
         elif e.key() == QtCore.Qt.Key_Up :
             self.currentSemantics = np.random.choice(arange(2))
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
             
     
 #     def eventFilter(self, obj, event) :
@@ -971,16 +985,24 @@ class Window(QtGui.QWidget):
             
             self.oldInfoText = self.frameInfo.text()
             
+<<<<<<< HEAD
         self.setFocus()
             
     def setRenderFps(self, value) :
         self.playTimer.setInterval(1000/value)
         self.setFocus()
+=======
+    def setRenderFps(self, value) :
+        self.playTimer.setInterval(1000/value)
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
     def setBackgroundColor(self) :
         newBgColor = QtGui.QColorDialog.getColor(QtCore.Qt.black, self, "Choose Background Color")
         self.frameLabel.setBackgroundColor(newBgColor)
+<<<<<<< HEAD
         self.setFocus()
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         
     def createGUI(self) :
         

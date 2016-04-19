@@ -12,7 +12,11 @@ from scipy import optimize
 import time
 import os
 
+<<<<<<< HEAD
 from sklearn import ensemble
+=======
+
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 import cv2
 
 import scipy.io as sio
@@ -24,8 +28,11 @@ from PIL import Image
 import GraphWithValues as gwv
 import VideoTexturesUtils as vtu
 
+<<<<<<< HEAD
 import ComputeGridFeatures as cgf
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 # <codecell>
 
 ## trying to replicate Neill's example
@@ -169,9 +176,15 @@ dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "splashes_water/"
 # dataSet = "small_waterfall/"
 # dataSet = "sisi_flag/"
+<<<<<<< HEAD
 dataSet = "eu_flag_ph_left/"
 # dataSet = "ribbon2/"
 # dataSet = "candle1/segmentedAndCropped/"
+=======
+# dataSet = "eu_flag_ph_left/"
+# dataSet = "ribbon2/"
+dataSet = "candle1/segmentedAndCropped/"
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 framePaths = np.sort(glob.glob(dataPath + dataSet + "frame*.png"))
 numFrames = len(framePaths)
 print numFrames
@@ -180,18 +193,30 @@ imageSize = np.array(Image.open(framePaths[0])).shape[0:2]
 # <codecell>
 
 im = cv2.imread(framePaths[0])
+<<<<<<< HEAD
 figure(); imshow(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+=======
+figure(); imshow(im)
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
 ### compute l2 dist for images of the splashes_water dataset
+<<<<<<< HEAD
 resizeRatio = 1.0#0.4#0.5#0.75
+=======
+resizeRatio = 0.75#0.5
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 doRGB = False
 useRange = False
 featsRange = np.array([-2, -1, 0, 1, 2])
 # featsRange = np.array([-1, 0, 1])
 rangeResizeRatios = resizeRatio/2**np.abs(arange(-np.floor(len(featsRange)/2), np.floor(len(featsRange)/2)+1))
+<<<<<<< HEAD
 baseDimensionality = int(np.prod(np.round(np.array(imageSize)*resizeRatio)))
+=======
+baseDimensionality = np.prod(np.round(np.array(imageSize)*resizeRatio))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 if doRGB :
     if useRange :
         imagesRGBData = np.zeros((np.sum(baseDimensionality/((resizeRatio/rangeResizeRatios)**2))*3, numFrames), dtype=np.float32)
@@ -246,6 +271,7 @@ else :
 # <codecell>
 
 ## visualize features from the image data when using ranges to make sure they've been assembled well
+<<<<<<< HEAD
 # imageFeatsSize = np.array(baseDimensionality/((resizeRatio/rangeResizeRatios)**2), dtype=int)
 # print imageFeatsSize
 # resizedImageSize = cv2.resize(cv2.imread(framePaths[0]), (0, 0), fx=rangeResizeRatios[1], fy=rangeResizeRatios[1], interpolation=cv2.INTER_AREA).shape[0:2]
@@ -254,6 +280,15 @@ else :
 # figure(); imshow(imagesGrayData[:imageFeatsSize[0], 100].reshape(resizedImageSize))
 # figure(); imshow(imagesGrayData[np.sum(imageFeatsSize[0:2]):, 100].reshape(resizedImageSize))
 figure(); imshow(imagesGrayData[:, 100].reshape((360, 640)))
+=======
+imageFeatsSize = np.array(baseDimensionality/((resizeRatio/rangeResizeRatios)**2), dtype=int)
+print imageFeatsSize
+resizedImageSize = cv2.resize(cv2.imread(framePaths[0]), (0, 0), fx=rangeResizeRatios[1], fy=rangeResizeRatios[1], interpolation=cv2.INTER_AREA).shape[0:2]
+figure(); imshow(imagesGrayData[imageFeatsSize[0]:np.sum(imageFeatsSize[0:2]), 100].reshape(resizedImageSize))
+resizedImageSize = cv2.resize(cv2.imread(framePaths[0]), (0, 0), fx=rangeResizeRatios[0], fy=rangeResizeRatios[0], interpolation=cv2.INTER_AREA).shape[0:2]
+figure(); imshow(imagesGrayData[:imageFeatsSize[0], 100].reshape(resizedImageSize))
+figure(); imshow(imagesGrayData[np.sum(imageFeatsSize[0:2]):, 100].reshape(resizedImageSize))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -282,14 +317,21 @@ gwv.showCustomGraph(newL2Dist)
 # <codecell>
 
 # hogFeats = sio.loadmat(dataPath + dataSet + "allFramesHogs.mat")["hogFeats"]
+<<<<<<< HEAD
 # hogFeats = sio.loadmat(dataPath + dataSet + "allFramesHogs_NoEncoding.mat")["hogFeats"]
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 # print hogFeats.shape
 
 ## get feats of subsequent frames
 goodPairsIdxs = np.array([np.arange(numFrames-1, dtype=int), np.arange(1, numFrames, dtype=int)])
 print goodPairsIdxs
 
+<<<<<<< HEAD
 useValidatedJumps = True
+=======
+useValidatedJumps = False
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 if useValidatedJumps and os.path.isfile(dataPath+dataSet+"validatedJumps.npy") :
     ## validatedJumps has indices of good jumps which means that it contains indices of distances between i and j+1
@@ -303,8 +345,12 @@ if useValidatedJumps and os.path.isfile(dataPath+dataSet+"validatedJumps.npy") :
     badPairsIdxs = np.argwhere(validatedJumps == 0).T
     ### why did I do this?
 #     badPairsIdxs[1, : ] -= 1
+<<<<<<< HEAD
     print additionalGoodPairsIdxs.T
     print badPairsIdxs.T
+=======
+    print badPairsIdxs
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 else :
     ## get feats of random pairings that are considered bad
     numBadExamples = 1000
@@ -330,6 +376,7 @@ else :
 
 # <codecell>
 
+<<<<<<< HEAD
 ## copy the example idxs that uses the validated jumps to tmp
 # goodPairsIncludingValidation = np.copy(goodPairsIdxs)
 # badPairsIncludingValidation = np.copy(badPairsIdxs)
@@ -341,6 +388,8 @@ print badPairsIdxs.shape
 
 # <codecell>
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 allPairsHogs = []
 for i in xrange(len(hogFeats)) :
     for j in xrange(i+1, len(hogFeats)) :
@@ -386,6 +435,7 @@ print goodPairsIdxs.shape, badPairsIdxs.shape
 
 # <codecell>
 
+<<<<<<< HEAD
 print goodExamplesData.shape
 print badExamplesData.shape
 print np.concatenate((goodExamplesData[:, goodPairsToUse], badExamplesData[:, badPairsToUse]), axis=1).shape
@@ -399,10 +449,14 @@ goodPairsToUse = arange(len(goodPairsIdxs.T))
 badPairsToUse = arange(len(badPairsIdxs.T))
 # badPairsToUse = np.delete(badPairsToUse, 12)
 # badPairsToUse = badPairsToUse[10:]
+=======
+doHogs = False
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 if doHogs :
     ## use hog feats as frame features
     ## ABS DIST
     # goodExamplesData = np.sqrt((hogFeats[goodPairsIdxs[0, :], :]-hogFeats[goodPairsIdxs[1, :], :])**2)
+<<<<<<< HEAD
     goodExamplesData = ((hogFeats[goodPairsIdxs[0, :], :]-hogFeats[goodPairsIdxs[1, :], :])**2).T
     print goodExamplesData.shape
     ## ABS DIST
@@ -412,6 +466,17 @@ if doHogs :
     
     X = np.concatenate((goodExamplesData[:, goodPairsToUse], badExamplesData[:, badPairsToUse]), axis=1)
     w = np.concatenate((np.zeros(len(goodPairsToUse)), 10.0*np.ones(len(badPairsToUse)))).reshape((X.shape[-1], 1))
+=======
+    goodExamplesData = (hogFeats[goodPairsIdxs[0, :], :]-hogFeats[goodPairsIdxs[1, :], :])**2
+    print goodExamplesData.shape
+    ## ABS DIST
+    # badExamplesData = np.sqrt((hogFeats[badPairsIdxs[0, :], :]-hogFeats[badPairsIdxs[1, :], :])**2)
+    badExamplesData = (hogFeats[badPairsIdxs[0, :], :]-hogFeats[badPairsIdxs[1, :], :])**2
+    print badExamplesData.shape
+    
+    X = np.concatenate((goodExamplesData, badExamplesData)).T
+    w = np.concatenate((np.zeros(len(goodExamplesData)), 10.0*np.ones(len(badExamplesData)))).reshape((X.shape[-1], 1))
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
     N = X.shape[0]
     phi0 = np.ones((N, 1))
     
@@ -431,6 +496,7 @@ else :
     if useRange :
         goodExamplesData = goodExamplesData[:, int(np.floor(len(featsRange)/2)):-int(np.floor(len(featsRange)/2))]
     
+<<<<<<< HEAD
 #     X = np.concatenate((goodExamplesData, badExamplesData), axis=1)
 #     w = np.concatenate((np.zeros(goodExamplesData.shape[-1]), 10.0*np.ones(badExamplesData.shape[-1]))).reshape((X.shape[-1], 1))
     X = np.concatenate((goodExamplesData[:, goodPairsToUse], badExamplesData[:, badPairsToUse]), axis=1)
@@ -953,6 +1019,15 @@ print 8.8 - np.floor(8.8)
 # <codecell>
 
 print np.array(badExamplesStarMovement).T.shape
+=======
+    X = np.concatenate((goodExamplesData, badExamplesData), axis=1)
+    w = np.concatenate((np.zeros(goodExamplesData.shape[-1]), 10.0*np.ones(badExamplesData.shape[-1]))).reshape((X.shape[-1], 1))
+    N = X.shape[0]
+    phi0 = np.ones((N, 1))
+    sio.savemat(dataPath + dataSet + "trainingExamplesForImageData", {"X":X, "w":w})
+
+print N, X.shape, w.shape, phi0.shape
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -982,6 +1057,13 @@ print np.array(badExamplesStarMovement).T.shape
 
 # <codecell>
 
+<<<<<<< HEAD
+=======
+# fittedPhi = sio.loadmat(phiSaveLoc)['phi_MAP']
+
+# <codecell>
+
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 ## now call the matlab script to fit phi using psi
 if doHogs :
     trainingExamplesLoc = dataPath + dataSet + "trainingExamplesForHogs.mat"
@@ -1003,6 +1085,7 @@ elif stat == 11 :
     print "Error when loading examples"
 else :
     print "Optimization completed with status", stat
+<<<<<<< HEAD
     
 print output
 
@@ -1463,6 +1546,36 @@ figure(); plot(bob)
 figure(); plot(1.0/(1.0 + np.exp(-bob)))
 figure(); plot(1.0/(1.0 + np.exp(-5.0*bob)))
 figure(); plot(1.0/(1.0 + np.exp(-0.2*bob)))
+=======
+
+print output
+
+# <codecell>
+
+## now call the matlab script to fit phi using psi
+if doHogs :
+    trainingExamplesLoc = dataPath + dataSet + "trainingExamplesForHogs.mat"
+    phiSaveLoc = dataPath + dataSet + "fittedPhiForHogsUsingPsi.mat"
+else :
+    trainingExamplesLoc = dataPath + dataSet + "trainingExamplesForImageData.mat"
+    phiSaveLoc = dataPath + dataSet + "fittedPhiForImageDataUsingPsi.mat"
+
+matlabCommand = "cd ~/PhD/MATLAB/; matlab -nosplash -nodesktop -nodisplay -r "
+matlabCommand += "\"fitPsiForRegression '" + trainingExamplesLoc + "' '"
+matlabCommand += phiSaveLoc + "'; exit;\""
+
+stat, output = commands.getstatusoutput(matlabCommand)
+stat /= 256
+
+if stat == 10 :
+    print "Error when saving result"
+elif stat == 11 :
+    print "Error when loading examples"
+else :
+    print "Optimization completed with status", stat
+    
+print output
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -1507,6 +1620,7 @@ legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=4, mode="expand", border
 
 # <codecell>
 
+<<<<<<< HEAD
 # img1Name = "frame-00522.png"
 # img1Name = "frame-01022.png"
 # img2Name = "frame-01023.png"
@@ -1601,11 +1715,14 @@ print dist/numPoints, numPoints
 
 # <codecell>
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 print additionalGoodPairsIdxs
 print goodPairsIdxs[:, -len(additionalGoodPairsIdxs.T):]
 
 # <codecell>
 
+<<<<<<< HEAD
 gwv.showCustomGraph(np.average(goodExamplesBAK[np.prod(gridSize):2*np.prod(gridSize), goodPairsToUse], axis=1).reshape(gridSize))
 gwv.showCustomGraph(np.average(badExamplesBAK[np.prod(gridSize):2*np.prod(gridSize), badPairsToUse], axis=1).reshape(gridSize))
 
@@ -1732,10 +1849,22 @@ plot(dists[:numGood], color="y", label="Good training")
 plot(arange(numGood, numGood+numBad), dists[numGood:], color="r", label="Bad training")
 gca().autoscale(False)
 scatter(np.array(testExamples)-len(goodExamplesData.T)+len(additionalGoodPairsIdxs.T), dists[np.array(testExamples)-len(goodExamplesData.T)+len(additionalGoodPairsIdxs.T)])
+=======
+## plot good vs bad examples before and after fitting psi
+figure()
+plot(np.sqrt(np.dot(goodExamplesData[:, -len(additionalGoodPairsIdxs.T):].T, sio.loadmat(phiSaveLoc)['phi_MAP'])), color="y", label="Good training")
+plot(np.sqrt(np.dot(badExamplesData.T, sio.loadmat(phiSaveLoc)['phi_MAP'])), color="r", label="Bad training")
+legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=4, mode="expand", borderaxespad=0.)
+
+figure()
+plot(np.sqrt(np.dot(goodExamplesData[:, -len(additionalGoodPairsIdxs.T):].T, np.ones_like(sio.loadmat(phiSaveLoc)['phi_MAP']))), color="y", label="Good training")
+plot(np.sqrt(np.dot(badExamplesData.T, np.ones_like(sio.loadmat(phiSaveLoc)['phi_MAP']))), color="r", label="Bad training")
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=4, mode="expand", borderaxespad=0.)
 
 # <codecell>
 
+<<<<<<< HEAD
 figure("Random Forests - timeline pairs")
 plot(classifier.predict(list(goodExamplesData[:, :-len(additionalGoodPairsIdxs.T)].T)), color="g")
 
@@ -1755,6 +1884,8 @@ print np.sum(goodExamplesData[:, -len(additionalGoodPairsIdxs.T)+2]-badExamplesD
 
 # <codecell>
 
+=======
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 figure(); plot(fittedPhiUsingPsi)
 # print phiSaveLoc
 resizeRatio = 0.75

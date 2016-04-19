@@ -441,8 +441,12 @@ allFeats = {}
 for entityIdx in [0] : #arange(len(trackedSprites)) :
     entityFeats = []
     for frameIdx in xrange(len(semanticEntities[entityIdx][DICT_FRAMES_LOCATIONS])) :
+<<<<<<< HEAD
 #         feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), gmModel)#, False, True)
         feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), None, True)
+=======
+        feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), gmModel)#, False, True)
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         entityFeats.append(feats)
         sys.stdout.write('\r' + "Done with frame " + np.string_(frameIdx) + " of " + np.string_(len(semanticEntities[entityIdx][DICT_FRAMES_LOCATIONS])))
         sys.stdout.flush()
@@ -453,7 +457,11 @@ for entityIdx in [0] : #arange(len(trackedSprites)) :
 
 # <codecell>
 
+<<<<<<< HEAD
 sio.savemat(dataPath + dataSet + "allFramesHogs_NoEncoding", {"hogFeats":allFeats[0]})
+=======
+sio.savemat(dataPath + dataSet + "allFramesHogs", {"hogFeats":allFeats[0]})
+>>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
