@@ -30,6 +30,7 @@ import opengm
 
 DICT_SPRITE_NAME = 'sprite_name'
 DICT_BBOXES = 'bboxes'
+DICT_FOOTPRINTS = 'footprints' ## same as bboxes but it indicates the footprint of the sprite on the ground plane
 DICT_BBOX_ROTATIONS = 'bbox_rotations'
 DICT_BBOX_CENTERS = 'bbox_centers'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
@@ -38,6 +39,7 @@ DICT_SPRITE_IDX = 'sprite_idx' # stores the index in the self.trackedSprites arr
 DICT_DESIRED_SEMANTICS = 'desired_semantics' # stores what the desired semantics are for a certain sprite 
 #(I could index them by the frame when the toggle happened instead of using the below but maybe ordering is important and I would lose that using a dict)
 DICT_FRAME_SEMANTIC_TOGGLE = 'frame_semantic_toggle'# stores the frame index in the generated sequence when the desired semantics have changed
+DICT_MEDIAN_COLOR = 'median_color'
 
 DATA_IMAGE = 'image_data'
 DATA_MASK = 'mask_data'
@@ -436,17 +438,151 @@ gmModel = fitGMM(gmmTrainingFeats, 15)
 
 # <codecell>
 
+############################################ TEST TEST TEST TEST ############################################ 
+spriteIdx = -1
+for i in xrange(len(trackedSprites)) :
+    if trackedSprites[i][DICT_SPRITE_NAME] == 'red_car1' :
+        spriteIdx = i
+        break
+print "using sprite", trackedSprites[spriteIdx][DICT_SPRITE_NAME]
+
+## semantics for reshuffling are binary i.e. each frame has label 1 (i.e. sprite visible) and extra frame at beginning has label 0
+semanticLabels = np.zeros((len(trackedSprites[spriteIdx][DICT_BBOX_CENTERS])+1, 2))
+## label 0 means sprite not visible (i.e. only show the first empty frame)
+semanticLabels[0, 0] = 1.0
+semanticLabels[1:, 1] = 1.0
+delay = 8
+desiredLabel = np.array([1.0, 0.0]).reshape((1, 2))#.repeat(300-delay/2, axis=0)
+desiredLabel = np.concatenate((desiredLabel, toggleLabelsSmoothly(np.array([[1.0, 0.0]]), delay)))
+desiredLabel = np.concatenate((desiredLabel, np.array([0.0, 1.0]).reshape((1, 2)).repeat(600-delay, axis=0)))
+# semanticDist = np.sum(np.power(semanticLabels-desiredLabel, 2), axis=-1)
+desiredLabel = window.burstSemanticsToggle(np.array([1.0, 0.0]), 300, 2, 20)
+# desiredLabel = np.array([1.0, 0.0]).reshape((1, 2)).repeat(300, axis=0)
+
+tic = time.time()
+unaries, pairwise = getMRFCosts(semanticLabels, desiredLabel, 0, 300)
+print "computed costs in", time.time() - tic; sys.stdout.flush()
+# gwv.showCustomGraph(unaries[1:, :], title="unaries")
+tic = time.time()
+minCostTraversal, minCost = solveMRF(unaries, pairwise)
+print "solved in", time.time() - tic; sys.stdout.flush()
+print minCostTraversal
+
+# <codecell>
+
+## start with generating two sequences one for an instance of red_car1 and one for white_bus1 such that they would be colliding
+spriteIndices = np.array([0, 3])
+sequenceStartFrames = np.array([0, 580])
+sequenceLength = 450
+generatedSequences = np.zeros((len(spriteIndices), sequenceLength), dtype=int)
+allUnaries = []
+allPairwise = []
+allNodesConnectedToLabel = []
+
+## now generate initial conflicting sequences to be resolved later
+
+for idx in xrange(len(spriteIndices)) :
+    spriteTotalLength = len(trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS])
+
+    spriteSemanticLabels = np.zeros((spriteTotalLength+1, 2))
+    ## label 0 means sprite not visible (i.e. only show the first empty frame)
+    spriteSemanticLabels[0, 0] = 1.0
+    spriteSemanticLabels[1:, 1] = 1.0
+
+    tic = time.time()
+    if idx == 0 : 
+        spriteDesiredSemantics = np.array([1.0, 0.0]).reshape((1, 2))
+        spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, toggleLabelsSmoothly(np.array([1.0, 0.0]).reshape((1, 2)), 8)))
+        spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, np.roll(np.array([1.0, 0.0]).reshape((1, 2)), 1).repeat(sequenceLength-8-1, axis=0)))
+        
+        unaries, pairwise = getMRFCosts(spriteSemanticLabels, spriteDesiredSemantics, sequenceStartFrames[idx], sequenceLength)
+    else :
+        unaries, pairwise = getMRFCosts(spriteSemanticLabels, np.array([1.0, 0.0]).reshape((1, 2)).repeat(sequenceLength, axis=0), sequenceStartFrames[idx], sequenceLength)
+    allUnaries.append(unaries)
+    allPairwise.append(pairwise)
+    
+    jumpCosts = spriteDistMats[idx][1:, :-1]**2
+    viableJumps = np.argwhere(jumpCosts < 0.2)
+    viableJumps = viableJumps[np.ndarray.flatten(np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.1))]
+    ## add 1 to indices because of the 0th frame, and then 5, 4 from the filtering and 1 from going from distances to costs
+    allPairwise[idx][viableJumps[:, 0]+1+1+4, viableJumps[:, 1]+1+1+4] = jumpCosts[viableJumps[:, 0], viableJumps[:, 1]]
+    
+    ## now try and do the optimization completely vectorized
+    ## number of edges connected to each label node of variable n (pairwise stores node at arrow tail as cols and at arrow head as rows)
+    maxEdgesPerLabel = np.max(np.sum(np.array(pairwise.T != np.max(pairwise.T), dtype=int), axis=-1))
+    ## initialize this to index of connected label node with highest edge cost (which is then used as padding)
+    ## it contains for each label node of variable n (indexed by rows), all the label nodes of variable n-1 it is connected to by non infinite cost edge (indexed by cols)
+    nodesConnectedToLabel = np.argmax(pairwise.T, axis=-1).reshape((len(pairwise.T), 1)).repeat(maxEdgesPerLabel, axis=-1)
+    
+    sparseIndices = np.where(pairwise != np.max(pairwise))
+    # print sparseIndices
+    tailIndices = sparseIndices[0]
+    headIndices = sparseIndices[1]
+    
+    ## this contains which label of variable n-1 is connected to which label of variable n
+    indicesInLabelSpace = [list(tailIndices[np.where(headIndices == i)[0]]) for i in np.unique(headIndices)]
+    
+    for headLabel, tailLabels in zip(arange(0, len(nodesConnectedToLabel)), indicesInLabelSpace) :
+        nodesConnectedToLabel[headLabel, 0:len(tailLabels)] = tailLabels    
+        
+    allNodesConnectedToLabel.append(nodesConnectedToLabel)
+    
+    # gwv.showCustomGraph(unaries)
+    print "computed costs for sprite", spriteIndices[idx], "in", time.time() - tic; sys.stdout.flush()
+    tic = time.time()
+    # minCostTraversal, minCost = solveMRF(unaries, pairwise)
+#     minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)
+    minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[idx].T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+    
+    print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+    generatedSequences[idx, :] = minCostTraversal
+
+print generatedSequences
+
+count = 0
+while True :
+    print "iteration", count, 
+    ## get distance between every pairing of frames in the generatedSequences
+    areCompatible = np.zeros(generatedSequences.shape[-1], dtype=bool)
+    areCompatible[np.any(generatedSequences < 1, axis=0)] = True
+    
+    compatibDist, allCompatibDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], generatedSequences)
+    print "incompatibilities to solve", len(np.argwhere(allCompatibDists <= 1.0)); sys.stdout.flush()
+#     print allCompatibDists
+    
+    areCompatible[allCompatibDists > 1.0] = True
+    
+#     if not np.all(areCompatible) :
+#         for idx in arange(len(spriteIndices))[0:1] :
+            
+#             allUnaries[idx][np.negative(areCompatible), generatedSequences[idx, np.negative(areCompatible)]] += 1000.0 #10000000.0
+#             ## if I fix spriteIndices[1] then I can find out all combinations of frames between spriteIndices[0] and the generated sequence for spriteIndices[1]
+# #             gwv.showCustomGraph(allUnaries[idx])
+            
+#             tic = time.time()
+#             minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[idx].T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+            
+#             print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+# #             print minCostTraversal, minCost
+            
+#             generatedSequences[idx, :] = minCostTraversal
+#     else :
+#         break
+    
+    count += 1
+    if count > 0 :
+        break
+print generatedSequences
+
+# <codecell>
+
 ## extract features for all sprites
 allFeats = {}
 for entityIdx in [0] : #arange(len(trackedSprites)) :
     entityFeats = []
     for frameIdx in xrange(len(semanticEntities[entityIdx][DICT_FRAMES_LOCATIONS])) :
-<<<<<<< HEAD
 #         feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), gmModel)#, False, True)
         feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), None, True)
-=======
-        feats = getSemanticsFeatures(getSemanticsData(semanticEntities[entityIdx], frameIdx), gmModel)#, False, True)
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         entityFeats.append(feats)
         sys.stdout.write('\r' + "Done with frame " + np.string_(frameIdx) + " of " + np.string_(len(semanticEntities[entityIdx][DICT_FRAMES_LOCATIONS])))
         sys.stdout.flush()
@@ -457,11 +593,382 @@ for entityIdx in [0] : #arange(len(trackedSprites)) :
 
 # <codecell>
 
-<<<<<<< HEAD
+spriteTotLength = len(trackedSprites[0][DICT_BBOX_CENTERS])
+
+spriteSequence = generatedSequences[1, :][generatedSequences[1, :]-1 >= 0]#.reshape((1, sequenceLength)).repeat(spriteTotLength)-1
+# bob = np.vstack((np.ndarray.flatten(arange(spriteTotLength).reshape((1, spriteTotLength)).repeat(sequenceLength, axis=0)), 
+#                  generatedSequences[1, :].reshape((1, sequenceLength)).repeat(spriteTotLength)-1))
+bob = np.vstack((np.ndarray.flatten(arange(spriteTotLength).reshape((1, spriteTotLength)).repeat(len(spriteSequence), axis=0)), 
+                 spriteSequence.reshape((1, len(spriteSequence))).repeat(spriteTotLength)-1))
+
+# dist, allDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], bob, False, True)
+## just get the dists from spritesCompatibility
+allDists = spritesCompatibility[bob[0, :], bob[1, :]].reshape((len(spriteSequence), spriteTotLength))
+
+# <codecell>
+
+gwv.showCustomGraph(allDists.reshape((len(spriteSequence), spriteTotLength)))
+# print allDists.reshape((sequenceLength, spriteTotLength))
+
+# <codecell>
+
+## if I fix spriteIndices[1] then I can find out all combinations of frames between spriteIndices[0] and the generated sequence for spriteIndices[1]
+idx = 0
+modifiedUnaries = np.copy(allUnaries[idx])
+incompatiblePairs = np.argwhere(allDists.reshape((len(spriteSequence), spriteTotLength)) <= 1.0)
+# incompatiblePairs = incompatiblePairs[np.ndarray.flatten(np.argwhere(allDists.reshape((sequenceLength, spriteTotLength))[incompatiblePairs[:, 0], incompatiblePairs[:, 1]] >= 0.1)), :]
+modifiedUnaries[incompatiblePairs[:, 0], incompatiblePairs[:, 1]+1] = 1e7
+gwv.showCustomGraph(modifiedUnaries)
+
+tic = time.time()
+minCostTraversal, minCost = solveSparseDynProgMRF(modifiedUnaries.T, allPairwise[idx].T, allNodesConnectedToLabel[idx])
+print "solved traversal for sprite", spriteIndices[idx] , "in", time.time() - tic; sys.stdout.flush()
+print minCostTraversal, minCost
+
+# <codecell>
+
+# gwv.showCustomGraph(spriteDistMats[1])
+tmp = np.copy(spritesCompatibility)
+tmp[sequenceStartFrames[0]-1, 5:-5+1] += spriteDistMats[1][1:, :-1][sequenceStartFrames[1]-1, :]
+gwv.showCustomGraph(tmp)
+
+# <codecell>
+
+print trackedSprites[spriteIndices[idx]][DICT_SPRITE_NAME]
+
+# <codecell>
+
+debugSequence = []
+for idx in xrange(len(spriteIndices)) :
+    debugSequence.append({
+                          DICT_SPRITE_NAME:trackedSprites[spriteIndices[idx]][DICT_SPRITE_NAME],
+                          DICT_SPRITE_IDX:spriteIndices[idx],
+                          DICT_SEQUENCE_FRAMES:generatedSequences[idx, :],
+                          DICT_DESIRED_SEMANTICS:np.array([1.0, 0.0]).reshape((1, 2)).repeat(sequenceLength, axis=0)
+                          })
+    if idx == 0 :
+        debugSequence[idx][DICT_SEQUENCE_FRAMES] = minCostTraversal#np.ones(sequenceLength)*200
+np.save(dataPath+dataSet+"generatedSequence-debug.npy", debugSequence)
+
+# <codecell>
+
+incompatibleDistances = np.copy(spritesCompatibility)
+incompatiblePairs = np.argwhere(incompatibleDistances <= 1.0)
+incompatibleDistances[incompatiblePairs[:, 0], incompatiblePairs[:, 1]] = 1e7
+gwv.showCustomGraph(incompatibleDistances)
+
+# <codecell>
+
+## compute L2 distance between bbox centers for given sprites
+spriteDistMats = []
+for idx in xrange(len(spriteIndices)) :
+    bboxCenters = np.array([trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS][x] for x in np.sort(trackedSprites[spriteIndices[idx]][DICT_BBOX_CENTERS].keys())])
+    l2DistMat = np.zeros((len(bboxCenters), len(bboxCenters)))
+    for c in xrange(len(bboxCenters)) :
+        l2DistMat[c, c:] = np.linalg.norm(bboxCenters[c].reshape((1, 2)).repeat(len(bboxCenters)-c, axis=0) - bboxCenters[c:], axis=1)
+        l2DistMat[c:, c] = l2DistMat[c, c:]
+            
+    spriteDistMats.append(vtu.filterDistanceMatrix(l2DistMat, 4, False))
+
+# <codecell>
+
+## compute compatibility distance for every frame pairing between sprites
+## compute L2 distance between bbox centers for given sprites
+spritesCompatibility = np.zeros((len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS]), len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS])))
+
+for frame in np.arange(len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS])) :
+    spriteTotLength = len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS])
+    frameRanges = np.vstack((np.ones(spriteTotLength, dtype=int)*frame, np.arange(spriteTotLength, dtype=int).reshape((1, spriteTotLength))))
+    compatibilityDist, allCompatibilityDists = getOverlappingSpriteTracksDistance(trackedSprites[spriteIndices[0]], trackedSprites[spriteIndices[1]], frameRanges, False)
+    spritesCompatibility[frame, :] = allCompatibilityDists
+    
+    sys.stdout.write('\r' + "Computed frame " + np.string_(frame) + " of " + np.string_(len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS])))
+    sys.stdout.flush()
+
+# <codecell>
+
+gwv.showCustomGraph(spritesCompatibility)
+
+# <codecell>
+
+tmp = np.clip(spriteDistMats[0], 0.1, 0.3)#*(spriteDistMats[0] <= 1.0)
+gwv.showCustomGraph(tmp)
+# probs, cumProbs = vtu.getProbabilities(spriteDistMats[0][1:, 0:-1], 0.01, None, True)
+probs, cumProbs = vtu.getProbabilities(tmp[1:, 0:-1], 0.001, None, False)
+gwv.showCustomGraph(probs)
+gwv.showCustomGraph(cumProbs)
+
+# <codecell>
+
+spriteIndex = 0
+gwv.showCustomGraph(allPairwise[spriteIndex])
+gwv.showCustomGraph(spriteDistMats[spriteIndex])
+
+pairwiseWithDist = np.ones_like(allPairwise[spriteIndex])* 5
+jumpCosts = spriteDistMats[spriteIndex][1:, :-1]**2
+viableJumps = np.argwhere(jumpCosts < 0.2)
+viableJumps = viableJumps[np.ndarray.flatten(np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.1))]
+## add 1 to indices because of the 0th frame, and then 5, 4 from the filtering and 1 from going from distances to costs
+pairwiseWithDist[viableJumps[:, 0]+1, viableJumps[:, 1]+1] = jumpCosts[viableJumps[:, 0], viableJumps[:, 1]]
+gwv.showCustomGraph(pairwiseWithDist)
+
+# <codecell>
+
+print viableJumps.shape
+
+# <codecell>
+
+# np.all((jumpCosts < 2.0, jumpCosts > 0.1), axis=0)
+print np.argwhere(jumpCosts[viableJumps[:, 0], viableJumps[:, 1]] > 0.5)
+
+# <codecell>
+
+minCostTraversal, minCost = solveSparseDynProgMRF(allUnaries[spriteIndex].T, pairwiseWithDist.T, allNodesConnectedToLabel[spriteIndex])
+print minCostTraversal
+
+# <codecell>
+
+gwv.showCustomGraph(tmp.reshape(spriteDistMats[spriteIndex].shape))
+
+# <codecell>
+
+np.argwhere(tmp.reshape(spriteDistMats[spriteIndex].shape) < 0)
+
+# <headingcell level=2>
+
+# From here on there's stuff using the hardcoded compatibility measure and assumes the sprite loops till the end of its sequence without jumping around in the timeline
+
+# <codecell>
+
+## load tracked sprites
+trackedSprites = []
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
+    trackedSprites.append(np.load(sprite).item())
+## load generated sequence
+generatedSequence = list(np.load(dataPath + dataSet + "generatedSequence-2015-05-02_19:41:52.npy"))
+
+# <codecell>
+
+## try to learn from a labelled incompatibility and use it to not repeat the error
+## I know there's an incompatibility between two instances of red_car1 at frame 431 of the generated sequence loaded above
+labelledSequenceFrame = 413
+## here find which sprites were labelled eventually when I have a scribble but for now I just need to find the 2 sprites that I
+## saw were incompatible
+for seq in generatedSequence :
+    print seq[DICT_SPRITE_NAME], seq[DICT_SEQUENCE_FRAMES][labelledSequenceFrame]
+    ## here eventually check if scribble touches the current sprite by for instance checking whether scribble intersects the
+    ## sprite's bbox at frame seq[DICT_SEQUENCE_FRAMES][labelledSequenceFrame]
+
+## for now I know the two red_car1 sprites that collide at frame 413 are number 2 and 6 in the generatedSequence
+incompatibleSpriteTracks = np.array([2, 6])
+spriteIndices = [] ## index of given sprite in trackedSprites
+spriteSemanticLabels = []
+print
+print "incompatible sprites", incompatibleSpriteTracks, ":",
+for i in xrange(len(incompatibleSpriteTracks)) :
+    print generatedSequence[incompatibleSpriteTracks[i]][DICT_SPRITE_NAME] + "(", 
+    print np.string_(int(generatedSequence[incompatibleSpriteTracks[i]][DICT_SEQUENCE_FRAMES][labelledSequenceFrame])) + ")",
+    
+    spriteIndices.append(generatedSequence[incompatibleSpriteTracks[i]][DICT_SPRITE_IDX])
+    
+    ## compute semantic labels for each sprite which for the reshuffling case are binary 
+    ## i.e. each frame has label 1 (i.e. sprite visible) and extra frame at beginning has label 0
+    semanticLabels = np.zeros((len(trackedSprites[spriteIndices[i]][DICT_BBOX_CENTERS])+1, 2))
+    ## label 0 means sprite not visible (i.e. only show the first empty frame)
+    semanticLabels[0, 0] = 1.0
+    semanticLabels[1:, 1] = 1.0
+    
+    spriteSemanticLabels.append(semanticLabels)
+print
+
+
+## given that I know what sprites are incompatible and in what configuration, how do I go about getting a compatibility measure for all configurations?
+## and is there a way to get a compatibility measure for all the sprites combinations and all their configurations from it?
+
+## for now just use sprite center distance to characterise a certain configuration and later on use other cues like bbox overlap and RGB L2 distance
+## compute bbox center distance between the given configuration of incompatible sprites
+if len(incompatibleSpriteTracks) == 2 :
+    ## subtracting 1 here because in generatedSequence there is an extra frame for each frame denoting the sprite being invisible
+    spriteFrame = np.zeros(2, dtype=int)
+    spriteFrame[0] = generatedSequence[incompatibleSpriteTracks[0]][DICT_SEQUENCE_FRAMES][labelledSequenceFrame]-1
+    spriteFrame[1] = generatedSequence[incompatibleSpriteTracks[1]][DICT_SEQUENCE_FRAMES][labelledSequenceFrame]-1
+    
+    shift = np.abs(spriteFrame[0]-spriteFrame[1])
+    whosFirst = int(np.argmax(spriteFrame))
+    print whosFirst
+    
+    totalDistance, distances, frameRanges = getShiftedSpriteTrackDist(trackedSprites[spriteIndices[whosFirst]], 
+                                                                      trackedSprites[spriteIndices[whosFirst-1]], shift)
+    print totalDistance
+    
+    possibleShifts = np.arange(-len(trackedSprites[spriteIndices[0]][DICT_BBOX_CENTERS])+1, 
+                               len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS]), dtype=int)
+#     allDistances = np.zeros(len(possibleShifts))
+#     for shift, i in zip(possibleShifts, xrange(len(allDistances))) :
+#         if shift < 0 :
+#             totalDistance, distances, frameRanges = getShiftedSpriteTrackDist(trackedSprites[spriteIndices[0]], 
+#                                                                               trackedSprites[spriteIndices[1]], -shift)
+#         else :
+#             totalDistance, distances, frameRanges = getShiftedSpriteTrackDist(trackedSprites[spriteIndices[1]], 
+#                                                                               trackedSprites[spriteIndices[0]], shift)
+            
+#         allDistances[i] = totalDistance
+        
+#         sys.stdout.write('\r' + "Done " + np.string_(i) + " shifts of " + np.string_(len(allDistances)))
+#         sys.stdout.flush()
+
+# <codecell>
+
+sequenceLength = 101
+toggleDelay = 8
+## simulating situation where I'm inserting sprite 6 into the loaded generatedSequence at startFrame
+## this makes sure that I get the labelled incompatible situation (i.e. sprite 2 is at frame 72 and sprite 6 at 111) if I don't do anything about compatibility
+startFrame = 413#-111-toggleDelay/2
+
+## semantics for sprite 6
+spriteDesiredSemantics = np.array([1.0, 0.0]).reshape((1, 2))
+spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, toggleLabelsSmoothly(np.array([1.0, 0.0]).reshape((1, 2)), toggleDelay)))
+spriteDesiredSemantics = np.concatenate((spriteDesiredSemantics, np.roll(np.array([1.0, 0.0]).reshape((1, 2)), 1).repeat(sequenceLength-toggleDelay-1, axis=0)))
+
+## also need to simulate a situation where the semantics for a sprite are toggled before a certain sprite has been toggled but is already part of the 
+## sequence which is really the situation I'm in in the loaded generated sequence (i.e. I added sprite 2 at time t and then added sprite 6 at a later
+## time but before sprite 2 in the sequence time line so, chronologically, sprite 6 is added later but is incompatible with a sprite the will be shown
+## later in the sequence) but I guess when I add a new sprite, I need to check if it's compatible with all the sprites in the sequence although I'm not sure
+## how that would work
+
+
+conflictingSpriteTotalLength = len(trackedSprites[spriteIndices[1]][DICT_BBOX_CENTERS])
+print conflictingSpriteTotalLength
+
+conflictingSpriteSemanticLabels = np.zeros((conflictingSpriteTotalLength+1, 2))
+## label 0 means sprite not visible (i.e. only show the first empty frame)
+conflictingSpriteSemanticLabels[0, 0] = 1.0
+conflictingSpriteSemanticLabels[1:, 1] = 1.0
+
+## now optimize the sprite I'm changing the semantic label of (i.e. I want to show now)
+## optimize without caring about compatibility
+tic = time.time()
+unaries, pairwise = getMRFCosts(conflictingSpriteSemanticLabels, spriteDesiredSemantics, 0, sequenceLength)
+
+## now try and do the optimization completely vectorized
+## number of edges connected to each label node of variable n (pairwise stores node at arrow tail as cols and at arrow head as rows)
+maxEdgesPerLabel = np.max(np.sum(np.array(pairwise.T != np.max(pairwise.T), dtype=int), axis=-1))
+## initialize this to index of connected label node with highest edge cost (which is then used as padding)
+## it contains for each label node of variable n (indexed by rows), all the label nodes of variable n-1 it is connected to by non infinite cost edge (indexed by cols)
+nodesConnectedToLabel = np.argmax(pairwise.T, axis=-1).reshape((len(pairwise.T), 1)).repeat(maxEdgesPerLabel, axis=-1)
+
+sparseIndices = np.where(pairwise != np.max(pairwise))
+# print sparseIndices
+tailIndices = sparseIndices[0]
+headIndices = sparseIndices[1]
+
+## this contains which label of variable n-1 is connected to which label of variable n
+indicesInLabelSpace = [list(tailIndices[np.where(headIndices == i)[0]]) for i in np.unique(headIndices)]
+
+for headLabel, tailLabels in zip(arange(0, len(nodesConnectedToLabel)), indicesInLabelSpace) :
+    nodesConnectedToLabel[headLabel, 0:len(tailLabels)] = tailLabels    
+
+# gwv.showCustomGraph(unaries)
+print "computed costs for sprite", incompatibleSpriteTracks[1], "in", time.time() - tic; sys.stdout.flush()
+tic = time.time()
+# minCostTraversal, minCost = solveMRF(unaries, pairwise)
+minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)
+
+print "solved traversal for sprite", incompatibleSpriteTracks[1] , "in", time.time() - tic; sys.stdout.flush()
+print minCostTraversal, minCost
+
+count = 0
+unariesToUpdate = np.zeros_like(unaries, dtype=np.bool)
+while True :
+    ## check whether the sprite is compatible with existing sprites in the generated sequence
+    tic = time.time()
+    for i in xrange(len(generatedSequence)) :
+        if i != incompatibleSpriteTracks[1] and i == 7 :
+            overlappingSequence = np.array(generatedSequence[i][DICT_SEQUENCE_FRAMES][startFrame:startFrame+sequenceLength], dtype=int)
+#             print overlappingSequence
+            
+            spriteTotalLength = len(trackedSprites[generatedSequence[i][DICT_SPRITE_IDX]][DICT_BBOX_CENTERS])
+            spriteSemanticLabels = np.zeros((spriteTotalLength+1, 2))
+            ## label 0 means sprite not visible (i.e. only show the first empty frame)
+            spriteSemanticLabels[0, 0] = 1.0
+            spriteSemanticLabels[1:, 1] = 1.0
+            
+#             print spriteTotalLength
+#             print overlappingSequence
+#             print minCostTraversal
+            isCompatible = np.zeros(len(minCostTraversal), dtype=np.bool)
+            
+            ## if the semantic labels are different, the sprites are compatible with each in the reshuffling case but need to figure out how to deal with this
+            ## in a general way
+#             isCompatible[np.all(spriteSemanticLabels[overlappingSequence] != conflictingSpriteSemanticLabels[minCostTraversal], axis = 1)] = True
+            ### HACK ??? ### if one of the frame is 0 it means the two sprites are compatible
+            isCompatible[np.any(np.array(np.vstack((overlappingSequence.reshape((1, len(overlappingSequence))),
+                                                    minCostTraversal.reshape((1, len(minCostTraversal))))), dtype=int) == 0, axis = 0)] = True
+#             print isCompatible
+            frameRanges = synchedSequence2FullOverlap(np.array(np.vstack((overlappingSequence.reshape((1, len(overlappingSequence)))-1,
+                                                                          minCostTraversal.reshape((1, len(minCostTraversal)))-1)), dtype=int), 
+                                                      np.array((spriteTotalLength, conflictingSpriteTotalLength)))
+#             print frameRanges
+            
+            if frameRanges != None :
+#                 totalDistance, distances = getOverlappingSpriteTracksDistance(trackedSprites[generatedSequence[i][DICT_SPRITE_IDX]], trackedSprites[0], frameRanges)
+                
+                ## references precomputedDistances instead of recomputing
+                
+                spriteIdxs = np.array([generatedSequence[i][DICT_SPRITE_IDX], generatedSequence[incompatibleSpriteTracks[1]][DICT_SPRITE_IDX]])
+                sortIdxs = np.argsort(spriteIdxs)
+                pairing = np.string_(spriteIdxs[sortIdxs][0]) + np.string_(spriteIdxs[sortIdxs][1])
+                pairingShift = frameRanges[sortIdxs, 0][1]-frameRanges[sortIdxs, 0][0]
+                totalDistance = precomputedDistances[pairing][pairingShift]
+                
+                print totalDistance, precomputedDistances[pairing][pairingShift], pairing, pairingShift, frameRanges[sortIdxs, 0]
+                
+                ## find all pairs of frame that show the same label as the desired label (i.e. [0.0, 1.0])
+                tmp = np.all(spriteSemanticLabels[overlappingSequence] == conflictingSpriteSemanticLabels[minCostTraversal], axis=1)
+                if totalDistance > 50.0 : 
+                    isCompatible[np.all((np.all(conflictingSpriteSemanticLabels[minCostTraversal] == np.array([0.0, 1.0]), axis=1), tmp), axis=0)] = True
+            else :
+                print "sprites not overlapping"
+            
+#             print isCompatible
+    print "la", time.time() - tic
+    count += 1
+    if np.any(np.negative(isCompatible)) :
+        ## when I do the check for all the sprites in the sequence I would have to take an AND over all the isCompatible arrays but now I know there's only 1 sprite
+        
+        ## keep track of unaries to change
+        unariesToUpdate[np.arange(len(minCostTraversal), dtype=int)[np.negative(isCompatible)], minCostTraversal[np.negative(isCompatible)]] = True
+        ## change the unaries to increase the cost for the frames where the isCompatible is False
+#         unaries[np.arange(len(minCostTraversal), dtype=int)[np.negative(isCompatible)], minCostTraversal[np.negative(isCompatible)]] += 1000.0
+        unaries[np.argwhere(unariesToUpdate)[:, 0], np.argwhere(unariesToUpdate)[:, 1]] += 1000.0
+    #     gwv.showCustomGraph(unaries)
+        tic = time.time()
+#         minCostTraversal, minCost = solveMRF(unaries, pairwise)
+        minCostTraversal, minCost = solveSparseDynProgMRF(unaries.T, pairwise.T, nodesConnectedToLabel)
+        if True or np.mod(count, 10) == 0 :
+            print "iterarion", count, ": solved traversal for sprite", incompatibleSpriteTracks[1] , "in", time.time() - tic; sys.stdout.flush()
+#             print minCostTraversal, minCost
+        
+        if count == 200 :
+            break
+    else :
+        print "done biatch"
+        print minCostTraversal
+        break
+
+# <codecell>
+
+tmp = 2
+for cost, path, i in zip(minCosts[:, tmp], minCostPaths[:, tmp], xrange(1, minCosts.shape[0])) :
+    if np.mod(i-1, 5) == 0 :
+        print "{0:03d} - {1:03d}\t".format(i-1, i+3), 
+    print cost, "{0:03d}".format(int(path)), "\t",
+    if np.mod(i, 5) == 0 :
+        print
+
+# <codecell>
+
 sio.savemat(dataPath + dataSet + "allFramesHogs_NoEncoding", {"hogFeats":allFeats[0]})
-=======
-sio.savemat(dataPath + dataSet + "allFramesHogs", {"hogFeats":allFeats[0]})
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 

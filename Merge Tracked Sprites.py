@@ -46,10 +46,7 @@ PATCH_BORDER = 0.4
 
 ## load the tracked sprites
 DICT_SPRITE_NAME = 'sprite_name'
-<<<<<<< HEAD
 DICT_SEQUENCE_NAME = "semantic_sequence_name"
-=======
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 # DICT_BBOX_AFFINES = 'bbox_affines'
 DICT_BBOXES = 'bboxes'
 DICT_BBOX_ROTATIONS = 'bbox_rotations'
@@ -59,7 +56,6 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 DICT_MEDIAN_COLOR = 'median_color'
 
-<<<<<<< HEAD
 # dataPath = "/home/ilisescu/PhD/data/"
 # dataSet = "havana/"
 dataPath = "/media/ilisescu/Data1/PhD/data/"
@@ -71,14 +67,6 @@ dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "wave3/"
 # dataSet = "windows/"
 dataSet = "digger/"
-=======
-dataPath = "/home/ilisescu/PhD/data/"
-dataSet = "havana/"
-# dataPath = "/media/ilisescu/Data1/PhD/data/"
-# dataSet = "clouds_subsample10/"
-# dataSet = "theme_park_cloudy/"
-# dataSet = "theme_park_sunny/"
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -90,22 +78,15 @@ BL_IDX = 3
 frameLocs = np.sort(glob.glob(dataPath + dataSet + "/frame-*.png"))
 numOfFrames = len(frameLocs)
 numOfTrackedSprites = 0
-<<<<<<< HEAD
 bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))[:, :, :3]
 
 allXs = arange(bgImage.shape[1], dtype=float32).reshape((1, bgImage.shape[1])).repeat(bgImage.shape[0], axis=0)
 allYs = arange(bgImage.shape[0], dtype=float32).reshape((bgImage.shape[0], 1)).repeat(bgImage.shape[1], axis=1)
-=======
-bgImage = np.array(Image.open(dataPath + dataSet + "median.png"))
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 trackedSprites = []
 for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
-<<<<<<< HEAD
     print trackedSprites[-1][DICT_SEQUENCE_NAME]
-=======
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 ## merge tracked sprite with bg
 spriteIdx = 0
@@ -113,7 +94,6 @@ sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 
 # <codecell>
 
-<<<<<<< HEAD
 # ## finds mean color for each sprite
 # bgIm = np.array(Image.open(dataPath+dataSet+"median.png"))
 
@@ -156,65 +136,6 @@ sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 #     print 
 #     print dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SEQUENCE_NAME] + ".npy", trackedSprites[i][DICT_MEDIAN_COLOR]
 #     np.save(dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SEQUENCE_NAME] + ".npy", trackedSprites[i])
-=======
-bgIm = np.array(Image.open(dataPath+dataSet+"median.png"))
-
-for i in arange(len(trackedSprites)) :
-    maskDir = dataPath + dataSet + trackedSprites[i][DICT_SPRITE_NAME] + "-masked-blended"
-    
-    medianCols = []
-    count = 0
-    lenSprite = len(trackedSprites[i][DICT_FRAMES_LOCATIONS])
-    
-    for f in np.sort(trackedSprites[i][DICT_FRAMES_LOCATIONS].keys())[int(lenSprite*0.15):-int(lenSprite*0.15)] :
-        count += 1
-        frameName = trackedSprites[i][DICT_FRAMES_LOCATIONS][f].split(os.sep)[-1]
-        im = np.array(cv2.cvtColor(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), cv2.COLOR_BGRA2RGBA), dtype=np.uint8)
-#         center = np.array(trackedSprites[i][DICT_BBOX_CENTERS][f], dtype=int)[::-1]
-#         squarePadding = 20
-#         rows = np.ndarray.flatten(arange((center[0])-squarePadding, 
-#                                          (center[0])+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
-#         cols = np.ndarray.flatten(arange((center[1])-squarePadding, 
-#                                          (center[1])+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
-        
-#         medianCols.append(np.median(im[rows, cols, :-1], axis=0))
-        
-#         visiblePixels = np.argwhere(im[:, :, -1] != 0)
-#         medianCols.append(np.mean(im[visiblePixels[:, 0], visiblePixels[:, 1], :-1], axis=0))
-
-        diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
-        relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
-    
-        medianCols.append(np.mean(im[relevantPixels[:, 0], relevantPixels[:, 1], :-1], axis=0))
-        
-        sys.stdout.write('\r' + "Processed image " + np.string_(count) + " (" + np.string_(len(trackedSprites[i][DICT_FRAMES_LOCATIONS])) + ")")
-        sys.stdout.flush()
-    
-    medianRGB = np.median(np.array(medianCols), axis=0)
-    normed = medianRGB/np.linalg.norm(medianRGB)
-    
-    trackedSprites[i][DICT_MEDIAN_COLOR] = np.array(255/np.max(normed)*normed, dtype=int)
-    
-    print 
-    print dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i][DICT_MEDIAN_COLOR]
-    np.save(dataPath + dataSet + "sprite-" + "{0:04}".format(i) + "-" + trackedSprites[i][DICT_SPRITE_NAME] + ".npy", trackedSprites[i])
-
-# <codecell>
-
-# print im.shape
-# print np.median(np.array(medianCols), axis=0)
-# imshow(im[rows, cols, :-1].reshape((5, 5, 3)))
-figure(); imshow(im)
-figure(); imshow(bgIm)
-diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
-relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
-gwv.showCustomGraph(diffIm/np.max(diffIm)> 0.5)
-
-# <codecell>
-
-print rows
-print cols
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 # <codecell>
 
@@ -233,20 +154,13 @@ def multivariateNormal(data, mean, var, normalized = True) :
         
     return p
 
-def minusLogMultivariateNormal(data, mean, var, normalized = True) :
-    if (data.shape[0] != mean.shape[0] or np.any(data.shape[0] != np.array(var.shape)) 
-        or len(var.shape) != 2 or var.shape[0] != var.shape[1]) :
-        raise Exception("Data shapes don't agree data(" + np.string_(data.shape) + ") mean(" + np.string_(mean.shape) + 
-                        ") var(" + np.string_(var.shape) + ")")
-    
-    D = float(data.shape[0])
-    n = -0.5*np.log(np.linalg.det(var))-(D/2.0)*np.log(2.0*np.pi)
-    if normalized :
-        p = n -0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1)
-    else :
-        p = -0.5*np.sum(np.dot((data-mean).T, np.linalg.inv(var))*(data-mean).T, axis=-1)
-        
-    return -p
+dataPath = "/home/ilisescu/PhD/data/"
+dataSet = "havana/"
+# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataSet = "clouds_subsample10/"
+# dataSet = "theme_park_cloudy/"
+# dataSet = "theme_park_sunny/"
+formatString = "{:05d}.png"
 
 def vectorisedMinusLogMultiNormal(dataPoints, means, var, normalized = True) :
     if (dataPoints.shape[1] != means.shape[1] or np.any(dataPoints.shape[1] != np.array(var.shape)) 
@@ -335,51 +249,28 @@ def getGraphcutOnOverlap(patchA, patchB, patchAPixels, patchBPixels, multiplier,
     numNodes = h*width+numLabels
     gm = opengm.gm(numpy.ones(numNodes,dtype=opengm.label_type)*numLabels)
     
-    ## Last 2 nodes are patch A and B respectively
-    idxPatchANode = numNodes - 2
-    idxPatchBNode = numNodes - 1
+    medianCols = []
+    count = 0
+    lenSprite = len(trackedSprites[i][DICT_FRAMES_LOCATIONS])
     
+    for f in np.sort(trackedSprites[i][DICT_FRAMES_LOCATIONS].keys())[int(lenSprite*0.15):-int(lenSprite*0.15)] :
+        count += 1
+        frameName = trackedSprites[i][DICT_FRAMES_LOCATIONS][f].split(os.sep)[-1]
+        im = np.array(cv2.cvtColor(cv2.imread(maskDir+"/"+frameName, cv2.CV_LOAD_IMAGE_UNCHANGED), cv2.COLOR_BGRA2RGBA), dtype=np.uint8)
+#         center = np.array(trackedSprites[i][DICT_BBOX_CENTERS][f], dtype=int)[::-1]
+#         squarePadding = 20
+#         rows = np.ndarray.flatten(arange((center[0])-squarePadding, 
+#                                          (center[0])+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
+#         cols = np.ndarray.flatten(arange((center[1])-squarePadding, 
+#                                          (center[1])+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
         
-    ## get unary functions
-    unaries = np.zeros((numNodes,numLabels))
-    
-    ## fix label for nodes representing patch A and B to have label 0 and 1 respectively
-    unaries[idxPatchANode, :] = [0.0, maxCost]
-    unaries[idxPatchBNode, :] = [maxCost, 0.0]
-    
-    ## set unaries based on the priors given for both patches
-    unaries[0:h*width, 0] = unaryPriorPatchA
-    unaries[0:h*width, 1] = unaryPriorPatchB
-    
-    # add functions
-    fids = gm.addFunctions(unaries)
-    # add first order factors
-    gm.addFactors(fids, arange(0, numNodes, 1))
-    
-    
-    ## get factor indices for the overlap grid of pixels
-    stmp = time.time()
-#     pairIndices = np.array(opengm.secondOrderGridVis(width,h,True))
-    pairIndices = getGridPairIndices(width, h)
-#     print "pairIndices took", time.time()-stmp, "seconds"
-#     sys.stdout.flush()
-    ## get pairwise functions for those nodes
-#     pairwise = np.zeros(len(pairIndices))
-#     for pair, i in zip(pairIndices, arange(len(pairIndices))) :
-#         sPix = np.array([int(np.mod(pair[0],h)), int(pair[0]/h)])
-#         tPix = np.array([int(np.mod(pair[1],h)), int(pair[1]/h)])
+#         medianCols.append(np.median(im[rows, cols, :-1], axis=0))
         
-# #         pairwise[i] = norm(patchA[sPix[0], sPix[1], :] - patchB[sPix[0], sPix[1], :])
-# #         pairwise[i] += norm(patchA[tPix[0], tPix[1], :] - patchB[tPix[0], tPix[1], :])
+#         visiblePixels = np.argwhere(im[:, :, -1] != 0)
+#         medianCols.append(np.mean(im[visiblePixels[:, 0], visiblePixels[:, 1], :-1], axis=0))
 
-#         pairwise[i] = minusLogMultivariateNormal(patchA[sPix[0], sPix[1], :].reshape((3, 1)), patchB[sPix[0], sPix[1], :].reshape((3, 1)), np.eye(3)*multiplier, False)
-#         pairwise[i] += minusLogMultivariateNormal(patchA[tPix[0], tPix[1], :].reshape((3, 1)), patchB[tPix[0], tPix[1], :].reshape((3, 1)), np.eye(3)*multiplier, False)
-        
-#         fid = gm.addFunction(np.array([[0.0, pairwise[i]],[pairwise[i], 0.0]]))
-#         gm.addFactor(fid, pair)
-        
-    sPixs = np.array([np.mod(pairIndices[:, 0],h), pairIndices[:, 0]/h], dtype=int).T
-    tPixs = np.array([np.mod(pairIndices[:, 1],h), pairIndices[:, 1]/h], dtype=int).T
+        diffIm = (np.sum(np.abs(bgIm-im[:, :, :-1]), axis=-1)*im[:, :, -1]/255.0)
+        relevantPixels = np.argwhere(diffIm/np.max(diffIm) > 0.5)
     
     pairwise = vectorisedMinusLogMultiNormal(patchA[sPixs[:, 0], sPixs[:, 1], :], patchB[sPixs[:, 0], sPixs[:, 1], :], np.eye(3)*multiplier, False)
     pairwise += vectorisedMinusLogMultiNormal(patchA[tPixs[:, 0], tPixs[:, 1], :], patchB[tPixs[:, 0], tPixs[:, 1], :], np.eye(3)*multiplier, False)
@@ -434,7 +325,8 @@ def getGraphcutOnOverlap(patchA, patchB, patchAPixels, patchBPixels, multiplier,
 #     print "graph inference took", time.time()-s, "seconds"
 #     sys.stdout.flush()
     
-    labels = np.array(graphCut.arg(), dtype=int)
+    medianRGB = np.median(np.array(medianCols), axis=0)
+    normed = medianRGB/np.linalg.norm(medianRGB)
     
     reshapedLabels = np.reshape(np.copy(labels[0:-numLabels]), patchA.shape[0:2], 'F')
     
@@ -1208,256 +1100,6 @@ plot([offset[0], offset[0]+patchSize[1], offset[0]+patchSize[1], offset[0], offs
 
 # <codecell>
 
-## get image patches based on offset and patchSize
-bgPatch = np.copy(bgImage[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :])
-figure(); imshow(bgPatch)
-
-spritePatches = np.zeros((numOfSprites, patchSize[0], patchSize[1], bgImage.shape[-1]), dtype=uint8)
-for i in arange(numOfSprites) :
-    spritePatches[i, :, :, :] = np.array(Image.open(trackedSprites[i][DICT_FRAMES_LOCATIONS][currentFramePerSprite[i]]))[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :]
-    figure(); imshow(spritePatches[i, :, :, :])
-
-# <codecell>
-
-figure(); imshow(np.sum(np.power(spritePatches[0]-bgPatch, 2), axis=-1))
-
-# <codecell>
-
-## precompute pixel pairs for all edges in the patch
-gridEdges1D = np.array(opengm.secondOrderGridVis(patchSize[1],patchSize[0],True))
-gridEdges2D = np.zeros((len(gridEdges1D), 4))
-
-gridEdges2D[:, 0] = np.mod(gridEdges1D[:, 0], patchSize[0])
-gridEdges2D[:, 1] = np.array(gridEdges1D[:, 0]/patchSize[0], dtype=int)
-gridEdges2D[:, 2] = np.mod(gridEdges1D[:, 1], patchSize[0])
-gridEdges2D[:, 3] = np.array(gridEdges1D[:, 1]/patchSize[0], dtype=int)
-
-# <codecell>
-
-## get uniform prior for bg patch
-bgPrior = -np.log(np.ones(patchSize)/np.prod(patchSize))
-
-## get priors for all sprite patches
-spritePriors = np.zeros((numOfSprites, patchSize[0], patchSize[1]))
-xs = np.ndarray.flatten(np.arange(patchSize[1], dtype=float).reshape((patchSize[1], 1)).repeat(patchSize[0], axis=-1))
-ys = np.ndarray.flatten(np.arange(patchSize[0], dtype=float).reshape((1, patchSize[0])).repeat(patchSize[1], axis=0))
-data = np.vstack((xs.reshape((1, len(xs))), ys.reshape((1, len(ys)))))
-
-for i in arange(numOfSprites) :
-    ## get covariance and means of prior on patch by using the bbox
-    spriteBBox = np.dot(getAffMat(trackedSprites[i][DICT_BBOX_AFFINES][currentFramePerSprite[i], :]), bboxDefaultCorners)
-    segment1 = spriteBBox[:, 0] - spriteBBox[:, 1]
-    segment2 = spriteBBox[:, 1] - spriteBBox[:, 2]
-    sigmaX = np.linalg.norm(segment1)/2.0
-    sigmaY = np.linalg.norm(segment2)/2.0
-
-    ## find rotation as described here http://math.stackexchange.com/questions/612006/decomposing-an-affine-transformation
-    A11 = getAffMat(trackedSprites[spriteIdx][DICT_BBOX_AFFINES][f, :])[0, 1]
-    A21 = getAffMat(trackedSprites[spriteIdx][DICT_BBOX_AFFINES][f, :])[1, 1]
-    rotRadians = np.pi-np.arctan(A21/A11)
-
-    rotMat = np.array([[np.cos(rotRadians), -np.sin(rotRadians)], [np.sin(rotRadians), np.cos(rotRadians)]])
-    
-    means = np.reshape(trackedSprites[i][DICT_BBOX_AFFINES][currentFramePerSprite[i], 0:2], (2, 1)) - offset
-    covs = np.dot(np.dot(rotMat.T, np.array([[sigmaX**2, 0.0], [0.0, sigmaY**2]])), rotMat)
-    
-    print sigmaX, sigmaY, rotRadians, means
-    spritePriors[i, :, :] = np.reshape(minusLogMultivariateNormal(data, means, covs, True), patchSize, order='F')
-    
-    
-    figure(); imshow(spritePriors[i])
-#     gwv.showCustomGraph(np.reshape(multivariateNormal(data, means, covs, True), patchSize, order='F'))
-#     gwv.showCustomGraph(np.reshape(minusLogMultivariateNormal(data, means, covs, True), patchSize, order='F'))
-
-# <codecell>
-
-figure(); imshow(spritePatches[0])
-sobelY = np.array([[-1, -1, -1], [0, 0, 0], [1, 2, 1]])
-sobelX = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-gradientsY = cv2.filter2D(cv2.cvtColor(spritePatches[0], cv2.cv.CV_RGB2GRAY)/255.0, -1, sobelY)
-gradientsX = cv2.filter2D(cv2.cvtColor(spritePatches[0], cv2.cv.CV_RGB2GRAY)/255.0, -1, sobelX)
-figure(); imshow(gradientsY, interpolation='nearest', cmap=get_cmap("Greys"))
-figure(); imshow(gradientsX, interpolation='nearest', cmap=get_cmap("Greys"))
-
-# <codecell>
-
-gradientCostsY = np.exp(np.abs(gradientsY)/(0.3*np.mean(np.abs(gradientsY))))
-gradientCostsY /= np.sum(gradientCostsY)
-gradientCostsY = -log(gradientCostsY)/10.0
-gradientCostsX = np.exp(np.abs(gradientsX)/(0.3*np.mean(np.abs(gradientsX))))
-gradientCostsX /= np.sum(gradientCostsX)
-gradientCostsX = -log(gradientCostsX)/10.0
-#figure(); imshow
-gwv.showCustomGraph(gradientCostsY)#, interpolation='nearest', cmap=get_cmap("Greys"))
-#figure(); imshow
-gwv.showCustomGraph(gradientCostsY)#, interpolation='nearest', cmap=get_cmap("Greys"))
-
-# <codecell>
-
-print np.max(gradientCostsX), np.max(gradientCostsY), np.min(gradientCostsX), np.min(gradientCostsY)
-
-# <codecell>
-
-## get depth prior for bg by fitting a plane to the floor
-userDefinedPoints = np.array([[291, 713], [336, 945], [337, 642], [398, 879]], dtype=float)
-defaultPlanePoints = np.array([[0, 0], [0, patchSize[1]], [patchSize[0], 0], [patchSize[0], patchSize[1]]], dtype=float)
-# defaultPlanePoints = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=float)
-figure(); imshow(bgImage)
-scatter(userDefinedPoints[:, 1], userDefinedPoints[:, 0])
-
-# hom = cv2.findHomography(defaultPlanePoints, userDefinedPoints)[0]
-hom = cv2.findHomography(userDefinedPoints, defaultPlanePoints)[0]
-print hom
-
-# <codecell>
-
-figure();
-transformedGrid = np.dot(hom, np.concatenate((userDefinedPoints.T, np.ones((1, userDefinedPoints.T.shape[-1]))), axis=0))
-transformedGrid /= transformedGrid[-1, :]
-scatter(transformedGrid[1, :], transformedGrid[0, :])
-
-# <codecell>
-
-print transformedGrid
-
-# <codecell>
-
-print np.concatenate((userDefinedPoints.T, np.ones((1, userDefinedPoints.T.shape[-1]))), axis=0)
-
-# <codecell>
-
-figure(); imshow(bgImage)
-xs = np.ndarray.flatten(np.arange(patchSize[1], dtype=float).reshape((patchSize[1], 1)).repeat(patchSize[0], axis=-1))
-ys = np.ndarray.flatten(np.arange(patchSize[0], dtype=float).reshape((1, patchSize[0])).repeat(patchSize[1], axis=0))
-
-pointGrid = np.vstack((ys.reshape((1, len(ys))), xs.reshape((1, len(xs)))))
-transformedGrid = np.dot(hom, np.concatenate((pointGrid, np.ones((1, pointGrid.shape[-1]))), axis=0))
-transformedGrid /= transformedGrid[-1, :]
-scatter(transformedGrid[1, 0:-1:100], transformedGrid[0, 0:-1:100])
-# scatter(data[1, 0:-1:100], data[0, 0:-1:100], marker='.')
-
-# <codecell>
-
-## get grid of points with origin in the middle of the image
-gridXs = np.ndarray.flatten(np.arange(-bgImage.shape[1]/2, bgImage.shape[1]/2, dtype=float).reshape((bgImage.shape[1], 1)).repeat(bgImage.shape[0], axis=-1))
-gridYs = np.ndarray.flatten(np.arange(-bgImage.shape[0]/2, bgImage.shape[0]/2, dtype=float).reshape((1, bgImage.shape[0])).repeat(bgImage.shape[1], axis=0))
-
-pointGrid = np.vstack((gridYs.reshape((1, len(gridYs))), gridXs.reshape((1, len(gridXs))), np.ones((1, len(gridXs)))))
-
-# <codecell>
-
-gridXs = np.ndarray.flatten(np.arange(bgImage.shape[1], dtype=float).reshape((bgImage.shape[1], 1)).repeat(bgImage.shape[0], axis=-1))
-gridYs = np.ndarray.flatten(np.arange(bgImage.shape[0], dtype=float).reshape((1, bgImage.shape[0])).repeat(bgImage.shape[1], axis=0))
-
-pointGrid = np.vstack((gridYs.reshape((1, len(gridYs))), gridXs.reshape((1, len(gridXs))), np.ones((1, len(gridXs)))))
-
-# <codecell>
-
-tmp = np.dot(hom, pointGrid)
-tmp /= tmp[-1, :]
-tmp[:, np.any(tmp > 1000, axis=0)] = 1000
-tmp[:, np.any(tmp < -1000, axis=0)] = -1000
-
-# print tmp.shape
-gwv.showCustomGraph(tmp[0, :].reshape(bgImage.shape[0:2], order='F'))
-
-# <codecell>
-
-print np.any(tmp > 1000, axis=0).shape
-
-# <codecell>
-
-print np.max(tmp[1, :])
-
-# <codecell>
-
-## merge two overlapping patches
-
-h = patchSize[0]
-w = patchSize[1]
-
-## force one ring of pixels on the edge of the patch to come from patch A (i.e. the bg)
-patAPixs = np.arange(0, h, dtype=uint)
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint))))
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)+h-1)))
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(h*(w-1), h*w, dtype=uint))))
-
-## force small square of size squarePadding*2 + 1 around center of patch to come from patch B (i.e. the car)
-squarePadding = 6
-rows = np.ndarray.flatten(arange((h/2)-squarePadding, (h/2)+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
-cols = np.ndarray.flatten(arange((w/2)-squarePadding, (w/2)+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
-patBPixs = rows + cols*h
-patBPixs = np.empty(0)
-
-patA = np.copy(bgPatch/255.0)
-patB = np.copy(spritePatches[0]/255.0)
-
-labels, unaryCosts, pairCosts, graphModel = getGraphcutOnOverlap(patA, patB, patAPixs, patBPixs, 0.001, 
-                                                   bgPrior.reshape(np.prod(patchSize), order='F'),
-                                                   spritePriors[0].reshape(np.prod(patchSize), order='F'))
-
-figure(); imshow(labels, interpolation='nearest')
-
-outputPatch = np.zeros(patA.shape, dtype=uint8)
-for i in xrange(labels.shape[0]) :
-    for j in xrange(labels.shape[1]) :
-        if labels[i, j] == 0 :
-            outputPatch[i, j, :] = patA[i, j, :]*255
-        else :
-            outputPatch[i, j, :] = patB[i, j, :]*255
-            
-figure(); imshow(outputPatch, interpolation='nearest')
-
-# <codecell>
-
-## merge three overlapping patches
-
-h = patchSize[0]
-w = patchSize[1]
-
-## force one ring of pixels on the edge of the patch to come from patch A (i.e. the bg)
-patAPixs = np.arange(0, h, dtype=uint)
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint))))
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(0, h*(w-1)+1, h, dtype=uint)+h-1)))
-patAPixs = np.unique(np.concatenate((patAPixs, np.arange(h*(w-1), h*w, dtype=uint))))
-
-## force small square of size squarePadding*2 + 1 around center of patch to come from patch B (i.e. the car)
-squarePadding = 6
-rows = np.ndarray.flatten(arange((h/2)-squarePadding, (h/2)+squarePadding+1).reshape((squarePadding*2+1, 1)).repeat(squarePadding*2+1, axis=-1))
-cols = np.ndarray.flatten(arange((w/2)-squarePadding, (w/2)+squarePadding+1).reshape((1, squarePadding*2+1)).repeat(squarePadding*2+1, axis=0))
-patBPixs = rows + cols*h
-patBPixs = np.empty(0)
-patCPixs = np.empty(0)
-
-patA = np.copy(bgPatch/255.0)
-patB = np.copy(spritePatches[0]/255.0)
-patC = np.copy(spritePatches[1]/255.0)
-
-labels, unaryCosts, pairCosts, graphModel = get3WayLabelling(patA, patB, patC, patAPixs, patBPixs, patCPixs, 0.005, 
-                                                   bgPrior.reshape(np.prod(patchSize), order='F'),
-                                                   spritePriors[0].reshape(np.prod(patchSize), order='F'),
-                                                   spritePriors[1].reshape(np.prod(patchSize), order='F'))
-# labels, unaryCosts, pairCosts = get3WayLabelling(patA, patB, patC, patAPixs, patBPixs, patCPixs, 0.005, 
-#                                                    bgPrior.reshape(np.prod(patchSize), order='F'),
-#                                                    (spritePriors[0]*(1.0-weightedDiffAB/np.max(weightedDiffAB))).reshape(np.prod(patchSize), order='F'),
-#                                                    (spritePriors[1]*(1.0-weightedDiffAC/np.max(weightedDiffAC))).reshape(np.prod(patchSize), order='F'))
-
-figure(); imshow(labels, interpolation='nearest')
-
-outputPatch = np.zeros(patA.shape, dtype=uint8)
-for i in xrange(labels.shape[0]) :
-    for j in xrange(labels.shape[1]) :
-        if labels[i, j] == 0 :
-            outputPatch[i, j, :] = patA[i, j, :]*255
-        elif labels[i, j] == 1 :
-            outputPatch[i, j, :] = patB[i, j, :]*255
-        else :
-            outputPatch[i, j, :] = patC[i, j, :]*255
-            
-figure(); imshow(outputPatch, interpolation='nearest')
-
-# <codecell>
-
 ## load the tracked sprites
 DICT_SPRITE_NAME = 'sprite_name'
 # DICT_BBOX_AFFINES = 'bbox_affines'
@@ -1766,21 +1408,12 @@ DICT_BBOX_CENTERS = 'bbox_centers'
 # DICT_START_FRAME = 'start_frame'
 DICT_FRAMES_LOCATIONS = 'frame_locs'
 
-<<<<<<< HEAD
 dataPath = "/home/ilisescu/PhD/data/"
 dataSet = "havana/"
 # dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "clouds_subsample10/"
 # dataSet = "theme_park_cloudy/"
 # dataSet = "theme_park_sunny/"
-=======
-# dataPath = "/home/ilisescu/PhD/data/"
-# dataSet = "havana/"
-dataPath = "/media/ilisescu/Data1/PhD/data/"
-# dataSet = "clouds_subsample10/"
-# dataSet = "theme_park_cloudy/"
-dataSet = "theme_park_sunny/"
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -1799,11 +1432,7 @@ for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
     trackedSprites.append(np.load(sprite).item())
 
 ## merge tracked sprite with bg
-<<<<<<< HEAD
 spriteIdx = 2
-=======
-spriteIdx = 0
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 sequenceLength = len(trackedSprites[spriteIdx][DICT_BBOXES])
 showFigs = True
 

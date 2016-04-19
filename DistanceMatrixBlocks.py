@@ -37,12 +37,9 @@ dataFolder = "/media/ilisescu/Data1/PhD/data/"
 sampleData = "candle1/segmentedAndCropped/"
 sampleData = "candle2/subset_stabilized/segmentedAndCropped/"
 sampleData = "candle3/stabilized/segmentedAndCropped/"
-<<<<<<< HEAD
 sampleData = "wave2/"
 sampleData = "toy/"
 
-=======
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 outputData = dataFolder+sampleData
 
 ## Find pngs in sample data
@@ -89,11 +86,7 @@ def distEuc2(f1, f2) :
 
 ## divide data into subblocks
 s = time.time()
-<<<<<<< HEAD
 numBlocks = 2
-=======
-numBlocks = 8
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 blockSize = numFrames/numBlocks
 print numFrames, numBlocks, blockSize
 distanceMatrix = np.zeros([numFrames, numFrames])
@@ -105,17 +98,10 @@ for i in xrange(0, numBlocks) :
     ##load row frames
     f1s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
     for f, idx in zip(xrange(i*blockSize, i*blockSize+blockSize), xrange(0, blockSize)) :
-<<<<<<< HEAD
         img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float64)
         if f < len(segmented) and os.path.isfile(segmented[f]) :
             alpha = np.array(Image.open(segmented[f]), dtype=np.float64)[:, :, -1]/255.0
             f1s[:, :, :, idx] = (img/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))
-=======
-        img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-        if f < len(mattes) and os.path.isfile(mattes[f]) :
-            alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
-            f1s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         else :
             if f < len(mattes) and os.path.isfile(mattes[f]) :
                 alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float64)/255.0
@@ -139,17 +125,10 @@ for i in xrange(0, numBlocks) :
         ##load column frames
         f2s = np.zeros(np.hstack([frameSize[0], frameSize[1], frameSize[2], blockSize]))
         for f, idx in zip(xrange(j*blockSize, j*blockSize+blockSize), xrange(0, blockSize)) :
-<<<<<<< HEAD
             img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float64)
             if f < len(segmented) and os.path.isfile(segmented[f]) :
                 alpha = np.array(Image.open(segmented[f]), dtype=np.float64)[:, :, -1]/255.0
                 f2s[:, :, :, idx] = (img/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))
-=======
-            img = np.array(cv2.cvtColor(cv2.imread(frames[f]), cv2.COLOR_BGR2RGB), dtype=np.float32)
-            if f < len(mattes) and os.path.isfile(mattes[f]) :
-                alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float32)/255.0
-                f2s[:, :, :, idx] = (img/255.0)*np.repeat(np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)), 3, axis=-1)
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
             else :
                 if f < len(mattes) and os.path.isfile(mattes[f]) :
                     alpha = np.array(cv2.cvtColor(cv2.imread(mattes[f]), cv2.COLOR_BGR2GRAY), dtype=np.float64)/255.0
@@ -173,11 +152,11 @@ print "finished in", time.time() - s
 
 # <codecell>
 
-<<<<<<< HEAD
-np.save(dataFolder+sampleData+"toy1-vanilla_distMat.npy", distanceMatrix)
-=======
 np.save(dataFolder+sampleData+"vanilla_distMat.npy", distanceMatrix)
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
+
+# <codecell>
+
+np.save(dataFolder+sampleData+"toy1-vanilla_distMat.npy", distanceMatrix)
 
 # <codecell>
 

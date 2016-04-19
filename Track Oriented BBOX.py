@@ -40,7 +40,6 @@ DRAW_FIRST_FRAME = 'first_frame'
 DRAW_LAST_FRAME = 'last_frame'
 DRAW_COLOR = 'color'
 
-<<<<<<< HEAD
 dataPath = "/home/ilisescu/PhD/data/"
 dataSet = "havana/"
 # dataPath = "/media/ilisescu/Data1/PhD/data/"
@@ -48,15 +47,6 @@ dataSet = "havana/"
 # dataSet = "theme_park_cloudy/"
 # dataSet = "theme_park_sunny/"
 # dataSet = "candle2/"
-=======
-# dataPath = "/home/ilisescu/PhD/data/"
-# dataSet = "havana/"
-dataPath = "/media/ilisescu/Data1/PhD/data/"
-# dataSet = "clouds_subsample10/"#"clouds/"
-# dataSet = "theme_park_cloudy/"
-# dataSet = "theme_park_sunny/"
-dataSet = "candle2/"
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 formatString = "{:05d}.png"
 
 TL_IDX = 0
@@ -997,6 +987,15 @@ class Window(QtGui.QWidget):
 window = Window()
 window.show()
 app.exec_()
+
+# <codecell>
+
+tmp = np.load(dataPath+dataSet+"sprite-0000-blue_car1.npy").item()
+print tmp.keys()
+
+# <codecell>
+
+print window.bbox
 
 # <codecell>
 

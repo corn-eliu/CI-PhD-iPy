@@ -25,17 +25,10 @@ dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "splashes_water/"
 # dataSet = "small_waterfall/"
 # dataSet = "sisi_flag/"
-<<<<<<< HEAD
 dataSet = "eu_flag_ph_left/"
 # dataSet = "candle1/segmentedAndCropped/"
 # dataSet = "candle2/subset_stabilized/segmentedAndCropped/"
 # dataSet = "candle3/stabilized/segmentedAndCropped/"
-=======
-# dataSet = "eu_flag_ph_left/"
-# dataSet = "candle1/segmentedAndCropped/"
-dataSet = "candle2/subset_stabilized/segmentedAndCropped/"
-dataSet = "candle3/stabilized/segmentedAndCropped/"
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 best10Jumps = []
 frames = glob.glob(dataPath + dataSet + "frame-*.png")
 mattes = glob.glob(dataPath + dataSet + "matte-*.png")
@@ -159,13 +152,8 @@ def getRangeDistances(l, frameRange, featherLevel, weightShape) :
 
     return rangeDistances
 
-<<<<<<< HEAD
 middleFrame = 750-correction#1150-correction
 rangeSpan = 300#600
-=======
-middleFrame = 1150-correction
-rangeSpan = 600
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 useOptimized = False
 
@@ -185,7 +173,6 @@ gwv.showCustomGraph(cumProbs)
 
 # <codecell>
 
-<<<<<<< HEAD
 gwv.showCustomGraph(probs)
 
 # <codecell>
@@ -194,8 +181,6 @@ gwv.showCustomGraph(rangeDistances)
 
 # <codecell>
 
-=======
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 ## find highest probability jumps
 sortedProbs = np.argsort(np.ndarray.flatten(probs))[::-1]
 sortedProbs = np.array([np.array(sortedProbs/probs.shape[0], dtype=int), 
@@ -435,11 +420,7 @@ class ImageLabel(QtGui.QLabel) :
         
     def setPixmap(self, pixmap) :
         if pixmap.width() > self.width() :
-<<<<<<< HEAD
             super(ImageLabel, self).setPixmap(pixmap)
-=======
-            super(ImageLabel, self).setPixmap(pixmap.scaledToWidth(self.width()))
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         else :
             super(ImageLabel, self).setPixmap(pixmap)
         
@@ -465,11 +446,7 @@ class Window(QtGui.QWidget):
         self.textureTimer.timeout.connect(self.renderOneFrame)
         self.visualizeMovie = False
         self.currentVisFrame = 0
-<<<<<<< HEAD
         self.showMatted = False
-=======
-        self.showMatted = True
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
         self.messageShowed = False
         
         self.labelJumpStyle = "QLabel {border: 1px solid black; background: #aa0000; color: white; padding-left: 5px; padding-right: 5px;}"
@@ -534,11 +511,7 @@ class Window(QtGui.QWidget):
                     alphaMatte = np.reshape(alphaMatte, np.hstack((alphaMatte.shape[0:2], 1)))
                     self.setTextureFrame(np.concatenate((cv2.imread(frames[frameIdx]), alphaMatte), axis=-1), True)
                 else :
-<<<<<<< HEAD
                     self.setTextureFrame(cv2.cvtColor(cv2.imread(frames[frameIdx]), cv2.COLOR_BGR2RGB), False)
-=======
-                    self.setTextureFrame(cv2.imread(frames[frameIdx]), False)
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
                     
                 if self.currentVisFrame == self.additionalFrames+1 or self.currentVisFrame == self.additionalFrames+2 :
                     self.movieInfo.setStyleSheet(self.labelJumpStyle)

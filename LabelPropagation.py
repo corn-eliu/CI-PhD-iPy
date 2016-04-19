@@ -30,7 +30,6 @@ import GraphWithValues as gwv
 import VideoTexturesUtils as vtu
 import ComputeGridFeatures as cgf
 
-<<<<<<< HEAD
 # dataPath = "/home/ilisescu/PhD/data/"
 dataPath = "/media/ilisescu/Data1/PhD/data/"
 
@@ -59,10 +58,6 @@ DICT_SEQUENCE_BG = "sequence_background_image"
 DICT_SEQUENCE_LOCATION = "sequence_location"
 DICT_PATCHES_LOCATION = "sequence_preloaded_patches_location"
 DICT_TRANSITION_COSTS_LOCATION = "sequence_precomputed_transition_costs_location"
-=======
-# dataFolder = "/home/ilisescu/PhD/data/"
-dataFolder = "/media/ilisescu/Data1/PhD/data/"
->>>>>>> fe1b005d2ec4d7eb0bc61da731ff4fa25b905e36
 
 app = QtGui.QApplication(sys.argv)
 
