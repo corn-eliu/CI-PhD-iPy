@@ -343,17 +343,17 @@ enhancer.enhance(1.8).show()
 # basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/plane_departures/"
 # basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/flowers/"
 # basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/street_complex/"
-# basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_fattestbar/"
+basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_fattestbar/"
 # basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_full/"
 # basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_planes_latest/"
-basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/aron/wave_user_study_task/"
+# basePath = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/aron/wave_user_study_task/"
 bgImage = np.array(Image.open(basePath+"bgImage.png"))
 frameLocs = np.sort(glob.glob(basePath + "frame-*.png"))
 
 if not os.path.isdir(basePath + "on_bg/") :
     os.mkdir(basePath + "on_bg/")
     
-for loc in frameLocs[0:] :
+for loc in frameLocs[195:] :
     currentFrame = np.array(Image.open(loc))
     
 #     if currentFrame.shape[0] >= bgImage.shape[0] :

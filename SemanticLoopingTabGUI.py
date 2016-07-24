@@ -63,6 +63,16 @@ TR_IDX = 1
 BR_IDX = 2
 BL_IDX = 3
 
+DRAW_FIRST_FRAME = 'first_frame'
+DRAW_LAST_FRAME = 'last_frame'
+DRAW_COLOR = 'color'
+LIST_SECTION_SIZE = 60
+SLIDER_SELECTED_HEIGHT = 23
+SLIDER_NOT_SELECTED_HEIGHT = 9
+SLIDER_PADDING = 1
+SLIDER_INDICATOR_WIDTH = 4
+SLIDER_MIN_HEIGHT = 42
+
 # <codecell>
 
 def vectorisedMinusLogMultiNormal(dataPoints, means, var, normalized = True) :
@@ -458,86 +468,253 @@ def solveSparseDynProgMRF(unaryCosts, pairwiseCosts, nodesConnectedToLabel) :
 
 # <codecell>
 
-DRAW_FIRST_FRAME = 'first_frame'
-DRAW_LAST_FRAME = 'last_frame'
-DRAW_COLOR = 'color'
-LIST_SECTION_SIZE = 60
-
 class SemanticsSlider(QtGui.QSlider) :
     def __init__(self, orientation=QtCore.Qt.Horizontal, parent=None) :
         super(SemanticsSlider, self).__init__(orientation, parent)
-        style = "QSlider::handle:horizontal { background: #cccccc; width: 25px; border-radius: 0px; } "
+        style = "QSlider::handle:horizontal { background: #cccccc; width: 0; border-radius: 0px; } "
         style += "QSlider::groove:horizontal { background: #dddddd; } "
         self.setStyleSheet(style)
         
         self.semanticsToDraw = []
-        self.numOfFrames = 1
-        self.selectedSemantics = 0
+        self.selectedSemantics = []
+        self.backgroundImage = QtGui.QImage(10, 10, QtGui.QImage.Format_ARGB32)
         
     def setSelectedSemantics(self, selectedSemantics) :
         self.selectedSemantics = selectedSemantics
         
-    def setSemanticsToDraw(self, semanticsToDraw, numOfFrames) :
-        self.semanticsToDraw = semanticsToDraw
-        self.numOfFrames = float(numOfFrames)
+        self.updateHeight()
+        self.updateBackgroundImage()
+        self.update()
         
-        desiredHeight = np.max((42, len(self.semanticsToDraw)*7))
+    def setSemanticsToDraw(self, semanticsToDraw) :
+        self.semanticsToDraw = semanticsToDraw
+        
+        self.updateHeight()
+        self.updateBackgroundImage()
+        self.update()
+        
+    def updateHeight(self) :
+        ## reset height
+        selectionHeight = len(self.selectedSemantics)*SLIDER_SELECTED_HEIGHT
+        remainingHeight = (len(self.semanticsToDraw)-len(self.selectedSemantics))*SLIDER_NOT_SELECTED_HEIGHT
+        paddingHeight = (len(self.semanticsToDraw))*2*SLIDER_PADDING
+        
+        desiredHeight = np.max((SLIDER_MIN_HEIGHT, selectionHeight+remainingHeight+paddingHeight))
+        
         self.setFixedHeight(desiredHeight)
         
-        self.resize(self.width(), self.height())
-        self.update()
+    def updateBackgroundImage(self) :
+        ## re-render background
+        if self.backgroundImage.size() != self.size() :
+            self.backgroundImage = self.backgroundImage.scaled(self.size())
+            
+        self.backgroundImage.fill(QtGui.QColor.fromRgb(0, 0, 0, 0))
+        painter = QtGui.QPainter(self.backgroundImage)
+        
+        ## draw semantics
+        clrs = np.arange(0.0, 1.0 + 1.0/15.0, 1.0/15.0)
+        clrs = mpl.cm.Set1(clrs, bytes=True)
+        
+        yCoord = SLIDER_PADDING
+        for i in xrange(len(self.semanticsToDraw)) :
+            desiredSemantics = self.semanticsToDraw[i]
+            ## make the color bar representing the requested semantics
+            ## getting the colors from clrs for each frame, alpha blended based on desired semantics
+            semanticsColorBar = desiredSemantics.reshape((desiredSemantics.shape[0], desiredSemantics.shape[1], 1))*clrs[:desiredSemantics.shape[1], :]
+            ## summing up the colors premultiplied by their alpha value
+            semanticsColorBar = np.sum(semanticsColorBar, axis=1).astype(np.uint8)[:, :3].reshape((1, len(desiredSemantics), 3))
+            
+            colorBarHeight = SLIDER_NOT_SELECTED_HEIGHT
+            if i in self.selectedSemantics :
+                colorBarHeight = SLIDER_SELECTED_HEIGHT
+            ## making color bar taller
+            semanticsColorBar = np.ascontiguousarray(np.repeat(semanticsColorBar, colorBarHeight, axis=0))
+            
+            colorBarImage = QtGui.QImage(semanticsColorBar.data, semanticsColorBar.shape[1], semanticsColorBar.shape[0], semanticsColorBar.strides[0], QtGui.QImage.Format_RGB888)
+            painter.drawImage(0, yCoord, colorBarImage.scaled(self.width()*float(desiredSemantics.shape[0])/float(self.maximum()+1), colorBarHeight))
+            
+            
+            yCoord += (colorBarHeight+2*SLIDER_PADDING)
+        
+        painter.end()
+        
+        
+    def resizeEvent(self, event) :
+        self.updateBackgroundImage()
+        
+    def mousePressEvent(self, event) :
+        if event.button() == QtCore.Qt.LeftButton :
+            self.setValue(event.pos().x()*(float(self.maximum())/self.width()))
         
     def paintEvent(self, event) :
         super(SemanticsSlider, self).paintEvent(event)
         
         painter = QtGui.QPainter(self)
         
-#         ## draw semantics
-#         CHANGE THIS ONE TO RENDER THE DESIRED SEMANTICS WITH INTERPOLATED COLORS DONE LIKE BELOW HERE
-#         clrs = np.arange(0.0, 1.0 + 1.0/15.0, 1.0/15.0)
-# #         clrs = clrs[:values.shape[1]]
-#         clrs = mpl.cm.Set1(clrs, bytes=True)
-#         print clrs
-        
-        yCoord = 0.0
-        for i in xrange(len(self.semanticsToDraw)) :
-            col = self.semanticsToDraw[i][DRAW_COLOR]
-
-            painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255)))
-            for first, last in zip(self.semanticsToDraw[i][DRAW_FIRST_FRAME], self.semanticsToDraw[i][DRAW_LAST_FRAME]) :
-                startX =  first/self.numOfFrames*self.width()
-                endX =  last/self.numOfFrames*self.width()
-
-                if i in self.selectedSemantics :
-                    painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 127), 1, 
-                                                  QtCore.Qt.DashLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
-                    painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
-
-                else :
-                    painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255 - col[0], 255 - col[1], 255 - col[2], 63), 1, 
-                                                  QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
-                    painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
-
-
-            yCoord += 7
-            
+        painter.drawImage(0, 0, self.backgroundImage)
 
         ## draw slider
-
-        ## the slider is 2 pixels wide so remove 1.0 from X coord
-        sliderXCoord = np.max((self.sliderPosition()/self.numOfFrames*self.width()-1.0, 0.0))
-        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 0), 0))
-        painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(0, 0, 0, 128)))
-        painter.drawRect(sliderXCoord, 0, 2, self.height())
+        ## mapping slider interval to its size
+        A = 0.0
+        B = float(self.maximum())
+        a = SLIDER_INDICATOR_WIDTH/2.0
+        b = float(self.width())-SLIDER_INDICATOR_WIDTH/2.0
+        if (B-A) != 0.0 :
+            ## (val - A)*(b-a)/(B-A) + a
+            sliderXCoord = (float(self.value()) - A)*(b-a)/(B-A) + a
+        else :
+            sliderXCoord = a
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 255), SLIDER_INDICATOR_WIDTH,
+                                          QtCore.Qt.SolidLine, QtCore.Qt.FlatCap, QtCore.Qt.MiterJoin))
+        painter.drawLine(sliderXCoord, 0, sliderXCoord, self.height())
         
         painter.end()
 
 # <codecell>
 
-class ListDelegate(QtGui.QItemDelegate):
+class IndexedCheckBox(QtGui.QCheckBox) :
+    indexedCheckBoxStateChanged = QtCore.Signal(int)
+    
+    def __init__(self, index, parent=None) :
+        super(IndexedCheckBox, self).__init__(parent)
+        self.index = index
+        
+        self.stateChanged.connect(self.emitStateChanged)
+    
+    def emitStateChanged(self) :
+        self.indexedCheckBoxStateChanged.emit(self.index)
+
+class InstancesShowWidget(QtGui.QWidget) :
+    instanceDoShowChanged = QtCore.Signal(int)
+    
+    def __init__(self, parent=None):
+        super(InstancesShowWidget, self).__init__(parent)
+        
+        self.setFixedWidth(30)
+        
+        self.instancesToDraw = []
+        self.selectedInstances = []
+        self.checkboxWidgets = []
+        self.backgroundImage = QtGui.QImage(10, 10, QtGui.QImage.Format_ARGB32)
+        
+        self.font = QtGui.QFont()
+        
+    def setSelectedInstances(self, selectedInstances) :
+        self.selectedInstances = selectedInstances
+        
+        for i in xrange(len(self.instancesToDraw)) :
+            if i in self.selectedInstances :
+                self.layout().itemAt(i).widget().setFixedHeight(SLIDER_SELECTED_HEIGHT)
+            else :
+                self.layout().itemAt(i).widget().setFixedHeight(SLIDER_NOT_SELECTED_HEIGHT)
+        
+        self.updateHeight()
+        self.updateBackgroundImage()
+        self.update()
+        
+    def showInstanceChanged(self, index) :
+        print "INSTANCE", index, "SHOW CHANGED"; sys.stdout.flush()
+        self.instanceDoShowChanged.emit(index)
+        
+    def setInstancesToDraw(self, instancesToDraw, instancesDoShow) :
+        self.instancesToDraw = instancesToDraw
+        
+        if self.layout() != None :
+            child = self.layout().takeAt(0)
+            while child:
+                if child != None and child.widget() != None :
+                    child.widget().deleteLater()
+                child = self.layout().takeAt(0)
+                
+        if self.layout() == None :
+            self.setLayout(QtGui.QVBoxLayout())
+            
+        self.layout().setSpacing(SLIDER_PADDING*2)
+        self.layout().setContentsMargins(self.width()*(1.0/3.0), SLIDER_PADDING, 0, SLIDER_PADDING)
+
+        for i in xrange(len(instancesToDraw)) :
+
+            checkbox = IndexedCheckBox(i)
+            checkbox.setChecked(instancesDoShow[i])
+            checkbox.setStyleSheet("QCheckBox::indicator:hover { background: none; }")
+            checkbox.indexedCheckBoxStateChanged[int].connect(self.showInstanceChanged)
+            checkbox.setFixedWidth(self.width()*(2.0/3.0))
+
+            if i in self.selectedInstances :
+                checkbox.setFixedHeight(SLIDER_SELECTED_HEIGHT)
+            else :
+                checkbox.setFixedHeight(SLIDER_NOT_SELECTED_HEIGHT)
+
+            self.layout().addWidget(checkbox)
+        self.layout().addStretch()
+        
+        self.updateHeight()
+        self.updateBackgroundImage()
+        self.update()
+        
+    def updateHeight(self) :
+        selectionHeight = len(self.selectedInstances)*SLIDER_SELECTED_HEIGHT
+        remainingHeight = (len(self.instancesToDraw)-len(self.selectedInstances))*SLIDER_NOT_SELECTED_HEIGHT
+        paddingHeight = (len(self.instancesToDraw))*2*SLIDER_PADDING
+        
+        desiredHeight = np.max((SLIDER_MIN_HEIGHT, selectionHeight+remainingHeight+paddingHeight))
+        
+        self.setFixedHeight(desiredHeight)
+        
+    def updateBackgroundImage(self) :
+        ## re-render background
+        if self.backgroundImage.size() != self.size() :
+            self.backgroundImage = self.backgroundImage.scaled(self.size())
+            
+        self.backgroundImage.fill(QtGui.QColor.fromRgb(0, 0, 0, 0))
+        
+        painter = QtGui.QPainter(self.backgroundImage)
+        
+        yCoord = SLIDER_PADDING
+        for i in xrange(len(self.instancesToDraw)) :
+            col = self.instancesToDraw[i]
+            
+            colorBarHeight = SLIDER_NOT_SELECTED_HEIGHT
+            self.font.setBold(False)
+            self.font.setPixelSize(10)
+            if i in self.selectedInstances :
+                colorBarHeight = SLIDER_SELECTED_HEIGHT
+                self.font.setBold(True)
+                self.font.setPixelSize(11)
+                
+            painter.setFont(self.font)
+                
+            
+            instanceRect = QtCore.QRect(0, yCoord, self.width(), colorBarHeight)
+            textRect = QtCore.QRect(0, yCoord, self.width()*(1.0/3.0), colorBarHeight)
+            
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255)))
+            painter.drawRect(instanceRect)
+            
+            painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 255), 1,
+                                          QtCore.Qt.SolidLine, QtCore.Qt.FlatCap, QtCore.Qt.MiterJoin))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawText(textRect, QtCore.Qt.AlignCenter, np.string_(i+1))
+            
+            
+            yCoord += (colorBarHeight+2*SLIDER_PADDING)
+        
+        painter.end()
+        
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.drawImage(0, 0, self.backgroundImage)
+        painter.end()
+        
+#         super(InstancesShowWidget, self).paintEvent(event)
+
+# <codecell>
+
+class SequencesListDelegate(QtGui.QItemDelegate):
     
     def __init__(self, parent=None) :
-        super(ListDelegate, self).__init__(parent)
+        super(SequencesListDelegate, self).__init__(parent)
         
         self.setBackgroundColor(QtGui.QColor.fromRgb(245, 245, 245))
         self.iconImage = None
@@ -586,6 +763,52 @@ class ListDelegate(QtGui.QItemDelegate):
         else :
             painter.drawText(QtCore.QRect(rect.left(), rect.top(), rect.width(), rect.height()), 
                              QtCore.Qt.AlignVCenter | QtCore.Qt.AlignCenter, text)
+
+        painter.restore()
+        
+class InstancesListDelegate(QtGui.QItemDelegate):
+    
+    def __init__(self, parent=None) :
+        super(InstancesListDelegate, self).__init__(parent)
+        
+        self.setBackgroundColor(QtGui.QColor.fromRgb(245, 245, 245))
+        
+        self.font = QtGui.QFont()
+        self.font.setPixelSize(10)
+
+    def setBackgroundColor(self, bgColor) :
+        self.bgColor = bgColor
+    
+    def drawDisplay(self, painter, option, rect, text):
+        painter.save()
+        
+        colorRect = QtCore.QRect(rect.left(), rect.top()+SLIDER_PADDING, rect.width(), rect.height()-2*SLIDER_PADDING)
+        selectionRect = rect
+
+        # draw colorRect
+        painter.setBrush(QtGui.QBrush(self.bgColor))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRect(colorRect)
+
+        ## draw selection
+        if option.state & QtGui.QStyle.State_Selected:
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(245, 245, 245), 1, 
+                                              QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.MiterJoin))
+            painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
+            painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+
+        # set text color
+        painter.setPen(QtGui.QPen(QtCore.Qt.black))
+        if option.state & QtGui.QStyle.State_Selected:
+            self.font.setBold(True)
+            self.font.setPixelSize(11)
+        else :
+            self.font.setBold(False)
+            self.font.setPixelSize(10)
+        painter.setFont(self.font)
+
+        painter.drawText(colorRect, QtCore.Qt.AlignVCenter | QtCore.Qt.AlignCenter, text)
 
         painter.restore()
 
@@ -900,6 +1123,7 @@ class SemanticLoopingTab(QtGui.QWidget):
          
         self.createGUI()
         
+        self.isSequenceLoaded = False
         self.numbersSequenceFrames = []
         self.showNumbersSequence = False
         
@@ -916,8 +1140,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.semanticSequences = []
         self.selectedSemSequenceIdx = -1
         self.selectedSequenceInstancesIdxes = []
-        self.semanticsPerInstanceToShowIdxComboBoxes = []
-        self.instanceToShowCheckBoxes = []
+        self.instancesDoShow = []
         self.infoFrameIdxs = np.array([-1, -1])
         
         self.frameIdx = 0
@@ -953,7 +1176,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         
         self.setFocus()
        
-    #### RENDERING ####        
+    #### RENDERING ####
 
     def renderOneFrame(self) :
         if DICT_SEQUENCE_INSTANCES in self.synthesisedSequence :
@@ -967,6 +1190,10 @@ class SemanticLoopingTab(QtGui.QWidget):
     def showFrame(self, idx) :
         if np.any(self.bgImage != None) and self.overlayImg.size() != QtCore.QSize(self.bgImage.shape[1], self.bgImage.shape[0]) :
             self.overlayImg = self.overlayImg.scaled(QtCore.QSize(self.bgImage.shape[1], self.bgImage.shape[0]))
+        if self.overlayImg.size() != self.frameLabel.size() :
+            self.overlayImg = self.overlayImg.scaled(self.frameLabel.size())
+            
+            
         ## empty image
         self.overlayImg.fill(QtGui.QColor.fromRgb(255, 255, 255, 0))
         if idx >= 0 and len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0 :
@@ -974,7 +1201,7 @@ class SemanticLoopingTab(QtGui.QWidget):
             
             ## go through all the semantic sequence instances
             for s in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
-                if s >= len(self.instanceToShowCheckBoxes) or self.instanceToShowCheckBoxes[s].isChecked() :
+                if s >= len(self.instancesDoShow) or self.instancesDoShow[s] :
                     ## index in self.semanticSequences of current instance
                     seqIdx = int(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][s][DICT_SEQUENCE_IDX])
                     ## if there's a frame to show and the requested frameIdx exists for current instance draw, else draw just first frame
@@ -1034,7 +1261,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         ## draw sprite
         if doDrawSprite :
             frameSize = [overlayImg.height(), overlayImg.width()]#np.array(Image.open(sequence[DICT_FRAMES_LOCATIONS][sequence[DICT_FRAMES_LOCATIONS].keys()[0]])).shape[:2]
-            if frameKey in sequence[DICT_BBOXES].keys() :
+            if DICT_BBOXES in sequence.keys() and frameKey in sequence[DICT_BBOXES].keys() :
                 tl = np.min(sequence[DICT_BBOXES][frameKey], axis=0)
                 br = np.max(sequence[DICT_BBOXES][frameKey], axis=0)
             else :
@@ -1885,10 +2112,16 @@ class SemanticLoopingTab(QtGui.QWidget):
             
         self.setFocus()                
         
-    def changeSelectedInstances(self) :
+    def changeSelectedInstances(self, selected, deselected) :
         self.selectedSequenceInstancesIdxes = []
         for row in self.sequenceInstancesListTable.selectionModel().selectedRows() :
             self.selectedSequenceInstancesIdxes.append(row.row())
+        
+        for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
+            if i in self.selectedSequenceInstancesIdxes :
+                self.sequenceInstancesListTable.setRowHeight(i, SLIDER_SELECTED_HEIGHT+2*SLIDER_PADDING)
+            else :
+                self.sequenceInstancesListTable.setRowHeight(i, SLIDER_NOT_SELECTED_HEIGHT+2*SLIDER_PADDING)
         
         if len(self.selectedSequenceInstancesIdxes) > 0 :
             if self.frameIdx > len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES]) :
@@ -1897,6 +2130,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                 self.showFrame(self.frameIdx)
                 
         self.setSemanticSliderDrawables()
+        self.instancesShowIndicator.setSelectedInstances(self.selectedSequenceInstancesIdxes)
         
         print "selected instances", self.selectedSequenceInstancesIdxes; sys.stdout.flush()
         self.setFocus()
@@ -1907,6 +2141,16 @@ class SemanticLoopingTab(QtGui.QWidget):
             
             self.makeInfoImage(seqIdxs)
             self.updateInfoDialog(np.array([0, 0]))
+            
+            
+        ## reset height
+        selectionHeight = len(self.selectedSequenceInstancesIdxes)*SLIDER_SELECTED_HEIGHT
+        remainingHeight = (len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])-len(self.selectedSequenceInstancesIdxes))*SLIDER_NOT_SELECTED_HEIGHT
+        paddingHeight = (len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]))*2*SLIDER_PADDING
+        
+        desiredHeight = np.max((SLIDER_MIN_HEIGHT, selectionHeight+remainingHeight+paddingHeight))
+        
+        self.sequenceInstancesListTable.setFixedHeight(desiredHeight)
             
     def makeInfoImage(self, seqIdxs) :
         if self.doShowCompatibilityInfo :
@@ -1965,8 +2209,6 @@ class SemanticLoopingTab(QtGui.QWidget):
 
                 cellSize = 100
                 spacing = 10
-    #             seq1NumLabels = self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS].shape[1]
-    #             seq2NumLabels = self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS].shape[1]
                 seq1NumLabels = sequencePairCompatibilityLabels[0][0].shape[1]
                 seq2NumLabels = sequencePairCompatibilityLabels[1][0].shape[1]
                 labelCompatibility = np.ones((seq1NumLabels, seq2NumLabels))
@@ -1977,7 +2219,6 @@ class SemanticLoopingTab(QtGui.QWidget):
                     seq2Location in self.semanticSequences[seqIdxs[0]][DICT_CONFLICTING_SEQUENCES].keys()) :
 
                     for combination in self.semanticSequences[seqIdxs[0]][DICT_CONFLICTING_SEQUENCES][seq2Location] :
-    #                     labelCompatibility[combination[0], combination[1]] = 0
                         print "COMBINATION", combination
                         labelCompatibility[int(np.argwhere(np.array(sequencePairCompatibilityLabels[0][1]) == combination[0])),
                                            int(np.argwhere(np.array(sequencePairCompatibilityLabels[1][1]) == combination[1]))] = 0
@@ -1995,21 +2236,15 @@ class SemanticLoopingTab(QtGui.QWidget):
                         compatImg[spacing*(i+1)+cellSize*i:spacing*(i+1)+cellSize*(i+1),
                                   spacing*(j+1)+cellSize*j:spacing*(j+1)+cellSize*(j+1), :-1] = clr
 
-                ## make space for label grey scales
+                ## make space for label color scales
                 labelScalesWidth = 40
                 compatImgSize = compatImg.shape[0:2]
                 compatImg = np.concatenate(((np.ones((compatImg.shape[0], labelScalesWidth+spacing, 4), np.uint8)*
                                              np.array([128, 27, 128, 255], np.uint8).reshape((1, 1, 4))), compatImg), axis=1)
                 compatImg = np.concatenate(((np.ones((labelScalesWidth+spacing, compatImg.shape[1], 4), np.uint8)*
                                              np.array([128, 27, 128, 255], np.uint8).reshape((1, 1, 4))), compatImg), axis=0)
-                ## render the label grey scales
-    #             compatImg[-compatImgSize[0]+spacing:-spacing,
-    #                       spacing:spacing+labelScalesWidth, :] = valsToImg(makeStackPlot(np.ones((labelScalesWidth, seq1NumLabels))/seq1NumLabels,
-    #                                                                                      compatImgSize[0]-2*spacing))
-    #             compatImg[spacing:spacing+labelScalesWidth,
-    #                       -compatImgSize[1]+spacing:-spacing, :] = valsToImg(makeStackPlot(np.ones((labelScalesWidth, seq2NumLabels))/seq2NumLabels,
-    #                                                                                        compatImgSize[1]-2*spacing).T)
-
+                
+                ## render the label color scales
                 compatImg[-compatImgSize[0]+spacing:-spacing,
                           spacing:spacing+labelScalesWidth, :] = mpl.cm.Set1(makeStackPlot(np.ones((labelScalesWidth, seq1NumLabels))/seq1NumLabels,
                                                                                          compatImgSize[0]-2*spacing), bytes=True)
@@ -2042,16 +2277,6 @@ class SemanticLoopingTab(QtGui.QWidget):
             if self.infoDialog.isHidden() :
                 self.infoDialog.show()
     
-    def semanticsPerInstanceToShowChanged(self) :
-        self.setSemanticSliderDrawables()
-        
-        self.setFocus()
-    
-    def instancesToShowChanged(self) :
-        self.showFrame(self.frameIdx)
-        
-        self.setFocus()
-    
     def playSequenceButtonPressed(self) :
         if self.doPlaySequence :
             self.doPlaySequence = False
@@ -2075,6 +2300,12 @@ class SemanticLoopingTab(QtGui.QWidget):
         
     def setExtendLength(self, value) :
         self.EXTEND_LENGTH = value + 1
+                    
+    def toggleInstancesDoShow(self, index) :
+        self.instancesDoShow[index] = not self.instancesDoShow[index]
+        self.showFrame(self.frameIdx)
+        
+        self.setFocus()
        
     #### HANDLE INSERTION OF NEW SEMANTIC INSTANCE AND CALLBACKS ####        
 
@@ -2188,15 +2419,17 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                                                                           self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][-1][DICT_SEQUENCE_FRAMES]))
             self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][-1][DICT_DESIRED_SEMANTICS] = np.concatenate((np.zeros((self.frameIdx, self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][-1][DICT_DESIRED_SEMANTICS].shape[1])),
                                                                                                                     self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][-1][DICT_DESIRED_SEMANTICS]))
+            self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][-1][DICT_DESIRED_SEMANTICS][:self.frameIdx, self.startingSemanticsComboBox.currentIndex()] = 1.0
+            
+            self.instancesDoShow.append(True)
             
             ### UI stuff ###
-            self.setListOfSequenceInstances()            
             self.selectedSequenceInstancesIdxes = [len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])-1]
-            self.sequenceInstancesListTable.selectRow(self.selectedSequenceInstancesIdxes[-1])
-#             self.changeSelectedSequenceInstance(self.sequenceInstancesListTable.indexFromItem(self.sequenceInstancesListTable.item(self.selectedSequenceInstancesIdxes[-1], 0)))
             self.setSemanticSliderDrawables()
-    
-        
+            self.setListOfSequenceInstances()
+            self.setInstanceShowIndicatorDrawables()
+            self.instancesShowIndicator.setSelectedInstances(self.selectedSequenceInstancesIdxes)
+            self.sequenceInstancesListTable.selectRow(self.selectedSequenceInstancesIdxes[-1])
         
             
         self.addNewSemanticSequenceControls.setVisible(False)
@@ -2246,7 +2479,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                         classDists /= np.sum(classDists)
                         self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS] = np.concatenate((self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS],
                                                                                                                        classDists.reshape(1, len(classColors))))
-#                         print bboxCenter, allFrames[j, bboxCenter[1], bboxCenter[0], :], classDists, self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS].shape
+#                         print bboxCenter, allFrames[j, bboxCenter[1], bboxCenter[0],  :], classDists, self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS].shape
                 print "DONE IN", time.time() - startTime
                 
                 del allFrames
@@ -2263,6 +2496,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                     self.frameIdxSpinBox.setValue(0)
 
                 self.setSemanticSliderDrawables()
+                self.setInstanceShowIndicatorDrawables()
                 self.frameInfo.setText("Loaded sequence at " + self.loadedSynthesisedSequence)
             else :
                 self.showNumbersSequence = False
@@ -2753,7 +2987,11 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                                                  self.synthesisedSequence[DICT_SEQUENCE_INSTANCES].pop(self.selectedSequenceInstancesIdxes[0]))
                         print "down"
 
+                    self.setSemanticSliderDrawables()
                     self.setListOfSequenceInstances()
+                    self.setInstanceShowIndicatorDrawables()
+                    self.instancesShowIndicator.setSelectedInstances(self.selectedSequenceInstancesIdxes)
+                    
                 print
             elif e.key() == e.key() >= QtCore.Qt.Key_0 and e.key() <= QtCore.Qt.Key_9 :
                 pressedNum = np.mod(e.key()-int(QtCore.Qt.Key_0), int(QtCore.Qt.Key_9))
@@ -2769,7 +3007,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                         self.selectedSequenceInstancesIdxes = [np.random.choice(viableInstances)]
                     chosenRandomly = True
                         
-                if len(self.selectedSequenceInstancesIdxes) == 1 and self.selectedSequenceInstancesIdxes[-1] >= 0 and self.selectedSequenceInstancesIdxes[-1] < len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) :                            
+                if len(self.selectedSequenceInstancesIdxes) == 1 and self.selectedSequenceInstancesIdxes[-1] >= 0 and self.selectedSequenceInstancesIdxes[-1] < len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) :
 
                     if self.frameIdx > len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES]) :
                         self.frameIdxSpinBox.setValue(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES])-1)
@@ -2951,6 +3189,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                                         QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
                     if proceed :
                         del self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]]
+                        del self.instancesDoShow[self.selectedSequenceInstancesIdxes[-1]]
 
                         ## update sliders
                         maxFrames = 0
@@ -2962,10 +3201,13 @@ class SemanticLoopingTab(QtGui.QWidget):
                         ## UI stuff
                         self.setListOfSequenceInstances()
                         self.setSemanticSliderDrawables()
-
-                        self.frameIdx = maxFrames
+                        self.setInstanceShowIndicatorDrawables()
+                        
+                        if self.frameIdx > maxFrames :
+                            self.frameIdxSpinBox.setValue(maxFrames)
                         ## render
                         self.showFrame(self.frameIdx)
+                        self.setFocus()
 
             elif e.key() == QtCore.Qt.Key_S and e.modifiers() & QtCore.Qt.Modifier.CTRL :
                 self.saveSynthesisedSequence()
@@ -3076,17 +3318,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                     if (seqIdxs[0] in self.preloadedDistanceMatrices.keys() and seqIdxs[1] in self.preloadedDistanceMatrices.keys() and
                         DICT_LABELLED_FRAMES in self.semanticSequences[seqIdxs[0]].keys() and
                         DICT_LABELLED_FRAMES in self.semanticSequences[seqIdxs[1]].keys()) :
-
-    #                     self.infoDialog.setText(("compatibility cost [{0:d}, {1:d}] = {2:05f}\n"+
-    #                                              "{3}'s augmented labels [{4:d}] = {5}\n"+
-    #                                              "{6}'s augmented labels [{7:d}] = {8}").format(self.infoFrameIdxs[0], self.infoFrameIdxs[1],
-    #                                                                                             self.getCompatibilityMat(seqIdxs, verbose=False)[self.infoFrameIdxs[0], self.infoFrameIdxs[DICT_FRAME_COMPATIBILITY_LABELS1]],
-    #                                                                                             self.semanticSequences[seqIdxs[0]][DICT_SEQUENCE_NAME], self.infoFrameIdxs[0],
-    #                                                                                             np.array_str(self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS][self.infoFrameIdxs[0], :],
-    #                                                                                                          precision=1),
-    #                                                                                             self.semanticSequences[seqIdxs[1]][DICT_SEQUENCE_NAME], self.infoFrameIdxs[1],
-    #                                                                                             np.array_str(self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS][self.infoFrameIdxs[1], :],
-    #                                                                                                          precision=1)))
+                        
                         sequencePairCompatibilityLabels = self.getSequencePairCompatibilityLabels(seqIdxs, verbose=False)
                         self.infoDialog.setText(("compatibility cost [{0:d}, {1:d}] = {2:05f}\n"+
                                                  "{3}'s augmented labels [{4:d}] = {5}\n"+
@@ -3131,53 +3363,6 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                           False, True, True, False, None,
                                                           bboxColor = QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
                     self.infoDialog.setVisImage(visImg)
-
-    #             if posXY[0] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) and posXY[1] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
-    #                 posXY -= (self.PLOT_HEIGHT + self.TEXT_SIZE)
-    #                 if posXY[1] < len(self.preloadedDistanceMatrices[seqIdxs[0]]) and posXY[0] < len(self.preloadedDistanceMatrices[seqIdxs[1]]) :
-    #                     self.infoDialog.setText("compatibility cost [{0:d}, {1:d}] = {2:05f}".format(posXY[1], posXY[0], self.getCompatibilityMat(seqIdxs, verbose=False)[posXY[1], posXY[0]]))
-
-    #                     ## update visLabel
-    #                     if np.all(self.bgImage != None) :
-    #                         bgImage = np.ascontiguousarray(self.bgImage.copy())
-    #                         visImg = QtGui.QImage(bgImage.data, bgImage.shape[1], bgImage.shape[0], bgImage.strides[0], QtGui.QImage.Format_RGB888);
-    #                     else :
-    #                         visImg = QtGui.QImage(QtCore.QSize(1280, 720), QtGui.QImage.Format_RGB888)
-    #                         visImg.fill(QtGui.QColor.fromRgb(255, 255, 255))
-
-    #                     col = mpl.cm.jet(self.getCompatibilityMat(seqIdxs, verbose=False)[posXY[1], posXY[0]]/np.max(self.getCompatibilityMat(seqIdxs, verbose=False)), bytes=True)
-
-    #                     for i in xrange(len(seqIdxs)) :
-    #                         seqIdx = seqIdxs[i]
-    #                         sequenceFrameIdx = posXY[::-1][i]
-    #                         if sequenceFrameIdx >= 0 and sequenceFrameIdx < len(self.semanticSequences[seqIdx][DICT_FRAMES_LOCATIONS].keys()) :
-    #                             frameToShowKey = np.sort(self.semanticSequences[seqIdx][DICT_FRAMES_LOCATIONS].keys())[sequenceFrameIdx]
-    #                         else :
-    #                             frameToShowKey = -1
-
-    #                         if frameToShowKey >= 0 and seqIdx >= 0 and seqIdx < len(self.semanticSequences) :
-    #                             visImg = self.drawOverlay(visImg, self.semanticSequences[seqIdx], frameToShowKey,
-    #                                                       self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[i]][DICT_OFFSET],
-    #                                                       self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[i]][DICT_SCALE],
-    #                                                       False, True, True, False, self.preloadedPatches[seqIdx][frameToShowKey],
-    #                                                       bboxColor = QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
-    #                     self.infoDialog.setVisImage(visImg.scaledToWidth(self.infoDialog.imageLabel.width()))
-
-
-    #             elif posXY[0] >= self.TEXT_SIZE and posXY[1] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
-    #                 frame = posXY[1]-(self.PLOT_HEIGHT + self.TEXT_SIZE)
-    #                 if frame < len(self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS]) :
-    #                     self.infoDialog.setText("{0}'s augmented labels [{1:d}] = {2}".format(self.semanticSequences[seqIdxs[0]][DICT_SEQUENCE_NAME], frame,
-    #                                                                                                     np.array_str(self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS][frame, :],
-    #                                                                                                     precision=1)))
-    #             elif posXY[1] >= self.TEXT_SIZE and posXY[0] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
-    #                 frame = posXY[0]-(self.PLOT_HEIGHT + self.TEXT_SIZE)
-    #                 if frame < len(self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS]) :
-    #                     self.infoDialog.setText("{0}'s augmented labels [{1:d}] = {2}".format(self.semanticSequences[seqIdxs[1]][DICT_SEQUENCE_NAME], frame,
-    #                                                                                                     np.array_str(self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS][frame, :],
-    #                                                                                                     precision=1)))
-
-        #             print "mouse pos:", posXY, self.getCompatibilityMat(seqIdxs)[posXY[1], posXY[0]]
        
     #### SET UI LISTS AND VISUALS ####        
       
@@ -3186,7 +3371,7 @@ class SemanticLoopingTab(QtGui.QWidget):
 #         self.bgImage.save("bob.png")
         if len(self.semanticSequences) > 0 :
             self.loadedSequencesListModel.setRowCount(len(self.semanticSequences))
-            self.delegateList = []
+            self.loadedSequencesDelegateList = []
             
             if np.any(self.bgImageLoc != None) :
                 bgImg = np.array(Image.open(self.bgImageLoc))
@@ -3194,8 +3379,8 @@ class SemanticLoopingTab(QtGui.QWidget):
                 bgImg = np.zeros((720, 1280, 3), dtype=np.uint8)
                 
             for i in xrange(0, len(self.semanticSequences)):
-                self.delegateList.append(ListDelegate())
-                self.loadedSequencesListTable.setItemDelegateForRow(i, self.delegateList[-1])
+                self.loadedSequencesDelegateList.append(SequencesListDelegate())
+                self.loadedSequencesListTable.setItemDelegateForRow(i, self.loadedSequencesDelegateList[-1])
                 
                 ## set sprite name
                 self.loadedSequencesListModel.setItem(i, 0, QtGui.QStandardItem(self.semanticSequences[i][DICT_SEQUENCE_NAME]))
@@ -3251,111 +3436,111 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.loadedSequencesListModel.setRowCount(1)
 #             self.loadedSequencesListModel.setColumnCount(1)
             
-            self.delegateList = [ListDelegate()]
-            self.loadedSequencesListTable.setItemDelegateForRow(0, self.delegateList[-1])
+            self.loadedSequencesDelegateList = [SequencesListDelegate()]
+            self.loadedSequencesListTable.setItemDelegateForRow(0, self.loadedSequencesDelegateList[-1])
             self.loadedSequencesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
             self.loadedSequencesListTable.setEnabled(False)
             
     def setListOfSequenceInstances(self) :
         if len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0 :
-            self.sequenceInstancesListTable.setRowCount(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]))
-            self.sequenceInstancesListTable.setColumnCount(3)
-            self.semanticsPerInstanceToShowIdxComboBoxes = []
-            self.instanceToShowCheckBoxes = []
+            tmpSelectedInstances = np.copy(self.selectedSequenceInstancesIdxes)
+            self.sequenceInstancesListModel.removeRows(0, self.sequenceInstancesListModel.rowCount())
+            ## remove rows resets the list of selected rows in the table which will eventually call changeSelectedInstances and set self.selectedSequenceInstancesIdxes = []
+            self.selectedSequenceInstancesIdxes = list(tmpSelectedInstances)
+            self.sequenceInstancesListModel.setRowCount(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]))
+            self.sequenceInstancesListModel.setColumnCount(1)
+            self.sequenceInstancesDelegateList = []
             
-            self.sequenceInstancesListTable.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
-            self.sequenceInstancesListTable.horizontalHeader().setResizeMode(1, QtGui.QHeaderView.ResizeToContents)
-            self.sequenceInstancesListTable.horizontalHeader().setResizeMode(2, QtGui.QHeaderView.ResizeToContents)
-            
-            self.sequenceInstancesListTable.setHorizontalHeaderItem(1, QtGui.QTableWidgetItem("Action"))
-            self.sequenceInstancesListTable.setHorizontalHeaderItem(2, QtGui.QTableWidgetItem("Vis"))
-            
+            if len(self.selectedSequenceInstancesIdxes) > 0 and np.max(self.selectedSequenceInstancesIdxes) == len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) :
+                if len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) - 1 not in self.selectedSequenceInstancesIdxes :
+                    self.selectedSequenceInstancesIdxes[int(np.argwhere(self.selectedSequenceInstancesIdxes == np.max(self.selectedSequenceInstancesIdxes)))] = len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) - 1
+                else :
+                    del self.selectedSequenceInstancesIdxes[int(np.argwhere(self.selectedSequenceInstancesIdxes == np.max(self.selectedSequenceInstancesIdxes)))]
+            print "HAHAH2", self.selectedSequenceInstancesIdxes
+
             for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
                 seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
                 if seqIdx >= 0 and seqIdx < len(self.semanticSequences) :
-                    self.sequenceInstancesListTable.setItem(i, 0, QtGui.QTableWidgetItem(self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]))
-                    
-                    self.semanticsPerInstanceToShowIdxComboBoxes.append(QtGui.QComboBox())
-                    self.semanticsPerInstanceToShowIdxComboBoxes[-1].addItems(np.arange(self.semanticSequences[seqIdx][DICT_NUM_SEMANTICS]).astype(np.string0))
-                    self.semanticsPerInstanceToShowIdxComboBoxes[-1].currentIndexChanged[int].connect(self.semanticsPerInstanceToShowChanged)
-                    self.sequenceInstancesListTable.setCellWidget(i, 1, self.semanticsPerInstanceToShowIdxComboBoxes[-1])
-                    
-                    self.instanceToShowCheckBoxes.append(QtGui.QCheckBox())
-                    self.instanceToShowCheckBoxes[-1].setChecked(True)
-                    self.instanceToShowCheckBoxes[-1].stateChanged.connect(self.instancesToShowChanged)
-                    self.sequenceInstancesListTable.setCellWidget(i, 2, self.instanceToShowCheckBoxes[-1])
+                    self.sequenceInstancesDelegateList.append(InstancesListDelegate())
+                    self.sequenceInstancesListTable.setItemDelegateForRow(i, self.sequenceInstancesDelegateList[-1])
+
+                    ## set sprite name
+                    self.sequenceInstancesListModel.setItem(i, 0, QtGui.QStandardItem(self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]))
                 
+                    ## set sprite color
+                    if DICT_REPRESENTATIVE_COLOR in self.semanticSequences[seqIdx].keys() :
+                        col = self.semanticSequences[seqIdx][DICT_REPRESENTATIVE_COLOR]
+                        self.sequenceInstancesListTable.itemDelegateForRow(i).setBackgroundColor(QtGui.QColor.fromRgb(col[0], col[1], col[2], 255))
+                        
+                    
+                    if i in self.selectedSequenceInstancesIdxes :
+                        self.sequenceInstancesListTable.setRowHeight(i, SLIDER_SELECTED_HEIGHT+2*SLIDER_PADDING)
+                    else :
+                        self.sequenceInstancesListTable.setRowHeight(i, SLIDER_NOT_SELECTED_HEIGHT+2*SLIDER_PADDING)
+
             self.sequenceInstancesListTable.setEnabled(True)
+                
         else :
-            self.sequenceInstancesListTable.setRowCount(1)
-            self.sequenceInstancesListTable.setColumnCount(1)
-            self.sequenceInstancesListTable.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
-            self.sequenceInstancesListTable.setItem(0, 0, QtGui.QTableWidgetItem("No instances"))
+            self.sequenceInstancesListModel.setRowCount(1)
+
+            self.sequenceInstancesDelegateList = [InstancesListDelegate()]
+            self.sequenceInstancesListTable.setItemDelegateForRow(0, self.sequenceInstancesDelegateList[-1])
+            self.sequenceInstancesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
             self.sequenceInstancesListTable.setEnabled(False)
+            
+        
+        ## reset height
+        selectionHeight = len(self.selectedSequenceInstancesIdxes)*SLIDER_SELECTED_HEIGHT
+        remainingHeight = (len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])-len(self.selectedSequenceInstancesIdxes))*SLIDER_NOT_SELECTED_HEIGHT
+        paddingHeight = (len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]))*2*SLIDER_PADDING
+        
+        desiredHeight = np.max((SLIDER_MIN_HEIGHT, selectionHeight+remainingHeight+paddingHeight))
+        
+        self.sequenceInstancesListTable.setFixedHeight(desiredHeight)
       
     def setSemanticSliderDrawables(self) :
         if len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0  :
             self.semanticsToDraw = []
-            numOfFrames = 1
             for i in xrange(0, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])):
-                if i < len(self.semanticsPerInstanceToShowIdxComboBoxes) :
-                    seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
-                    if DICT_REPRESENTATIVE_COLOR in self.semanticSequences[seqIdx].keys() :
-                        col = self.semanticSequences[seqIdx][DICT_REPRESENTATIVE_COLOR]
-                    else :
-                        col = np.array([0, 0, 0])
-
-
-                    usedFrames = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES]
-                    validFrames = np.argwhere(usedFrames >= 0).flatten()
-                    semToShow = self.semanticsPerInstanceToShowIdxComboBoxes[i].currentIndex()
-                    desiredSemLoc = np.zeros(len(usedFrames), dtype=bool)
-                    desiredSemLoc[validFrames] = self.semanticSequences[seqIdx][DICT_FRAME_SEMANTICS][usedFrames[validFrames], semToShow] > 0.8
-                    changeDirs = desiredSemLoc[:-1].astype(int)-desiredSemLoc[1:].astype(int)
-                    changeLocs = np.argwhere(changeDirs != 0).flatten()
-
-                    ## if the sprite is ever visible
-                    if len(changeLocs) > 0 :
-                        ## if at the first change location we change from True to False, then the first section is showing the desired semantics so need to add the first frame
-                        if changeDirs[changeLocs[0]] > 0 :
-                            changeLocs = np.concatenate(([-1], changeLocs))
-                        ## if at the last change location we change from Fales to True, then the last section is showing the desired semantics so need to add the last frame
-                        if changeDirs[changeLocs[-1]] < 0 :
-                            changeLocs = np.concatenate((changeLocs, [len(usedFrames)-1]))
-                        segments = np.reshape(changeLocs, (len(changeLocs)/2, 2))
-                        segments[:, 0] += 1
-                    else :
-                        if desiredSemLoc[0] :
-                            segments = np.array([[0, len(usedFrames)-1]])
-                        else :
-                            segments = np.empty(0)
-
-                    if len(segments) > 0 :
-                        self.semanticsToDraw.append({
-                                                        DRAW_COLOR:col,
-                                                        DRAW_FIRST_FRAME:segments[:, 0], 
-                                                        DRAW_LAST_FRAME:segments[:, 1]
-                                                    })
-#                         self.semanticsToDraw.append({
-#                                                         DRAW_COLOR:col,
-#                                                         DICT_DESIRED_SEMANTICS:self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS]
-#                                                     })
-                    else :
-                        print "invisible sprite in generated sequence"
-                    numOfFrames = np.max((numOfFrames, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES])-0.5))
+                seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
+                if DICT_REPRESENTATIVE_COLOR in self.semanticSequences[seqIdx].keys() :
+                    col = self.semanticSequences[seqIdx][DICT_REPRESENTATIVE_COLOR]
+                else :
+                    col = np.array([0, 0, 0])
                     
-                    
+                self.semanticsToDraw.append((self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]
+                                             [i][DICT_DESIRED_SEMANTICS])[:len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES]), :])
             
             self.frameIdxSlider.setSelectedSemantics(self.selectedSequenceInstancesIdxes)
-            self.frameIdxSlider.setSemanticsToDraw(self.semanticsToDraw, numOfFrames)
+            self.frameIdxSlider.setSemanticsToDraw(self.semanticsToDraw)
             
         else :
-            self.frameIdxSlider.setSelectedSemantics(-1)
-            self.frameIdxSlider.setSemanticsToDraw([], 1)
+            self.frameIdxSlider.setSelectedSemantics([])
+            self.frameIdxSlider.setSemanticsToDraw([])
+            
+    def setInstanceShowIndicatorDrawables(self) :
+        if len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0  :
+            self.instancesToDraw = []
+            for i in xrange(0, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])):
+                seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
+                if DICT_REPRESENTATIVE_COLOR in self.semanticSequences[seqIdx].keys() :
+                    col = self.semanticSequences[seqIdx][DICT_REPRESENTATIVE_COLOR]
+                else :
+                    col = np.array([0, 0, 0])
+                self.instancesToDraw.append(col)
+            self.instancesShowIndicator.setInstancesToDraw(self.instancesToDraw, self.instancesDoShow)
+            
+        else :
+            self.instancesShowIndicator.setInstancesToDraw([], [])
             
     #### BACKGROUND IMAGE ####
             
     def setBgImage(self) :
+        if not self.isSequenceLoaded :
+            QtGui.QMessageBox.critical(self, "No Synthesised Sequence", ("<p align='center'> A synthesised sequence has not been loaded or created yet." +
+                                                                         "<br>Please create a new sequence or load an existing one.</p>"))
+            return
+            
         fileName = QtGui.QFileDialog.getOpenFileName(self, "Set Background Image", self.loadedSynthesisedSequence, "Image Files (*.png)")[0]
         self.updateBgImage(fileName)
         
@@ -3373,17 +3558,12 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.bgImageLoc = os.sep.join(self.loadedSynthesisedSequence.split(os.sep)[:-1])+os.sep+"bgImage.png"
             Image.fromarray(self.bgImage.astype(np.uint8)).save(self.bgImageLoc)
             
-            maxChars = 30
-            desiredText = "BG Image: " + self.bgImageLoc
-            desiredText = "\n ".join([desiredText[i:i+maxChars] for i in np.arange(0, len(desiredText), maxChars)])
-            self.setBgImageButton.setText(desiredText)
             self.bgImageLoc = fileName
             
             if np.any(self.loadedSynthesisedSequence != None) :
                 self.synthesisedSequence[DICT_SEQUENCE_BG] = self.bgImageLoc
             
         else :
-            self.setBgImageButton.setText("Set Background Image")
             self.bgImageLoc = None
             self.bgImage = None
             self.frameLabel.setImage(None)
@@ -3424,9 +3604,12 @@ class SemanticLoopingTab(QtGui.QWidget):
                 self.saveSynthesisedSequence()
                 
             self.loadSynthesisedSequenceAtLocation(fileName)
+            
+        return fileName
     
     def loadSynthesisedSequenceAtLocation(self, location) :
         if os.path.isfile(location) :
+            self.isSequenceLoaded = False
             try :
                 del self.synthesisedSequence
                 self.synthesisedSequence = np.load(location).item()
@@ -3494,6 +3677,13 @@ class SemanticLoopingTab(QtGui.QWidget):
                         print "loaded distances", self.semanticSequences[-1][DICT_DISTANCE_MATRIX_LOCATION]; sys.stdout.flush()
             print
             print "#####################"
+            
+            
+            ## resize the label showing the frame if there is no bgImage
+            if self.bgImage == None and len(self.semanticSequences) > 0:
+                if len(self.semanticSequences[0][DICT_FRAMES_LOCATIONS].keys()) > 0 :
+                    height, width, channels = np.array(Image.open(self.semanticSequences[0][DICT_FRAMES_LOCATIONS][self.semanticSequences[0][DICT_FRAMES_LOCATIONS].keys()[0]])).shape
+                    self.frameLabel.setFixedSize(width, height)
 
             ## set list of loaded semantic sequences
             self.setListOfLoadedSemSequences()
@@ -3505,39 +3695,44 @@ class SemanticLoopingTab(QtGui.QWidget):
                 self.selectedSemSequenceIdx = -1
 
             ## set list of instantiated sequences
+            self.instancesDoShow = list(np.ones(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]), bool))
             self.setListOfSequenceInstances()
-            if len(self.semanticSequences) > 0 :
-                self.selectedSequenceInstancesIdxes = [0]
-                self.sequenceInstancesListTable.selectRow(self.selectedSequenceInstancesIdxes[-1])
-    #             self.changeSelectedSequenceInstance(self.sequenceInstancesListTable.indexFromItem(self.sequenceInstancesListTable.item(self.selectedSequenceInstancesIdxes[-1], 0)))
-            else :
-                self.selectedSequenceInstancesIdxes = []
+#             if len(self.semanticSequences) > 0 :
+#                 self.selectedSequenceInstancesIdxes = [0]
+#                 self.sequenceInstancesListTable.selectRow(self.selectedSequenceInstancesIdxes[-1])
+#     #             self.changeSelectedSequenceInstance(self.sequenceInstancesListTable.indexFromItem(self.sequenceInstancesListTable.item(self.selectedSequenceInstancesIdxes[-1], 0)))
+#             else :
+            self.selectedSequenceInstancesIdxes = []
 
             ## set sliders
             maxFrames = 0
             for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
                 maxFrames = np.max((maxFrames, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES])))
 
-            self.frameIdxSlider.setMaximum(maxFrames-1)
-            self.frameIdxSpinBox.setRange(0, maxFrames-1)
+            if maxFrames > 0 :
+                self.frameIdxSlider.setMaximum(maxFrames-1)
+                self.frameIdxSpinBox.setRange(0, maxFrames-1)
+            else :
+                self.frameIdxSlider.setMaximum(0)
+                self.frameIdxSpinBox.setRange(0, 0)
 
             self.setSemanticSliderDrawables()
+            self.setInstanceShowIndicatorDrawables()
 
             ## render
             self.frameIdx = 0
-            self.showFrame(self.frameIdx)
+            self.frameIdxSpinBox.setValue(self.frameIdx)
 
             ## load tagged frames
             if os.path.isfile("/".join(self.loadedSynthesisedSequence.split("/")[:-1])+"/tagged_frames.npy") :
                 self.taggedFrames = np.load("/".join(self.loadedSynthesisedSequence.split("/")[:-1])+"/tagged_frames.npy").item()
             else :
                 self.taggedFrames = {}
-            self.loadSemanticSequenceButton.setEnabled(True)
             self.deleteSequenceButton.setEnabled(True)
-            self.setBgImageButton.setEnabled(True)
             self.playSequenceButton.setEnabled(True)
             self.loadNumberSequenceButton.setEnabled(True)
             self.frameInfo.setText("Loaded sequence at " + self.loadedSynthesisedSequence)
+            self.isSequenceLoaded = True
     
     def saveSynthesisedSequence(self) :
         if np.any(self.loadedSynthesisedSequence != None) :
@@ -3546,6 +3741,11 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.frameInfo.setText("Saved sequence at " + self.loadedSynthesisedSequence)
     
     def loadSemanticSequence(self) :
+        if not self.isSequenceLoaded :
+            QtGui.QMessageBox.critical(self, "No Synthesised Sequence", ("<p align='center'> A synthesised sequence has not been loaded or created yet." +
+                                                                         "<br>Please create a new sequence or load an existing one.</p>"))
+            return
+        
         fileNames = QtGui.QFileDialog.getOpenFileNames(self, "Load Input Sequence(s)", self.dataPath, "Input Sequences (semantic_sequence*.npy)")[0]
         for fileName in fileNames :
             semanticSequence = np.load(fileName).item()
@@ -3628,10 +3828,13 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.frameLabel = ImageLabel("Frame")
         self.frameLabel.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
         self.frameLabel.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
+        self.frameLabel.setStyleSheet("QLabel { margin: 0px; border: 1px solid gray; border-radius: 0px; }")
         self.frameLabel.installEventFilter(self)
         
         self.frameInfo = QtGui.QLabel("Info text")
         self.frameInfo.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
+        
+        self.instancesShowIndicator = InstancesShowWidget()
         
         self.frameIdxSlider = SemanticsSlider(QtCore.Qt.Horizontal)
         self.frameIdxSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
@@ -3655,22 +3858,45 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.renderFpsSpinBox.setValue(30)
         self.renderFpsSpinBox.setToolTip("FPS to use when playing back the synthesised sequence")
         
-        self.sequenceInstancesListTable = QtGui.QTableWidget(1, 1)
-        self.sequenceInstancesListTable.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
-        self.sequenceInstancesListTable.setHorizontalHeaderItem(0, QtGui.QTableWidgetItem("Instances"))
-        self.sequenceInstancesListTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.Fixed)
-        self.sequenceInstancesListTable.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.MinimumExpanding)
-        self.sequenceInstancesListTable.setFixedWidth(220)
+#         self.sequenceInstancesListTable = QtGui.QTableWidget(1, 1)
+#         self.sequenceInstancesListTable.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
+#         self.sequenceInstancesListTable.setHorizontalHeaderItem(0, QtGui.QTableWidgetItem("Instances"))
+#         self.sequenceInstancesListTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.Fixed)
+#         self.sequenceInstancesListTable.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.MinimumExpanding)
+#         self.sequenceInstancesListTable.setFixedWidth(180)
+#         self.sequenceInstancesListTable.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+#         self.sequenceInstancesListTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+#         self.sequenceInstancesListTable.setItem(0, 0, QtGui.QTableWidgetItem("No instances"))
+#         self.sequenceInstancesListTable.setEnabled(False)
+#         self.sequenceInstancesListTable.installEventFilter(self)
+
+        self.sequenceInstancesListModel = QtGui.QStandardItemModel(1, 1)
+        self.sequenceInstancesListModel.setHorizontalHeaderLabels(["Instances"])
+        self.sequenceInstancesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
+        
+        self.sequenceInstancesListTable = QtGui.QTableView()
         self.sequenceInstancesListTable.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
         self.sequenceInstancesListTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
-#         self.sequenceInstancesListTable.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
-        self.sequenceInstancesListTable.setItem(0, 0, QtGui.QTableWidgetItem("No instances"))
+        self.sequenceInstancesListTable.horizontalHeader().setStretchLastSection(True)
+        self.sequenceInstancesListTable.horizontalHeader().hide()
+        self.sequenceInstancesListTable.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
+        self.sequenceInstancesListTable.verticalHeader().setDefaultSectionSize(SLIDER_NOT_SELECTED_HEIGHT)
+        self.sequenceInstancesListTable.setMinimumHeight(10)
+        self.sequenceInstancesListTable.setFixedWidth(120)
         self.sequenceInstancesListTable.setEnabled(False)
-        self.sequenceInstancesListTable.installEventFilter(self)
+        self.sequenceInstancesListTable.verticalHeader().hide()
+        self.sequenceInstancesListTable.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.sequenceInstancesListTable.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.sequenceInstancesListTable.setStyleSheet("QTableView { border: none; } QTableView::item { selection-background-color:red;}")
+        self.sequenceInstancesListTable.setShowGrid(False)
+        
+        self.sequenceInstancesDelegateList = [InstancesListDelegate()]
+        self.sequenceInstancesListTable.setItemDelegateForRow(0, self.sequenceInstancesDelegateList[-1])
+        self.sequenceInstancesListTable.setModel(self.sequenceInstancesListModel)
 
 
         self.loadedSequencesListModel = QtGui.QStandardItemModel(1, 1)
-        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded input sequences"])
+        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded Input Sequences"])
         self.loadedSequencesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
         
         self.loadedSequencesListTable = QtGui.QTableView()
@@ -3684,8 +3910,8 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.loadedSequencesListTable.setMinimumHeight(10)
         self.loadedSequencesListTable.setEnabled(False)
 
-        self.delegateList = [ListDelegate()]
-        self.loadedSequencesListTable.setItemDelegateForRow(0, self.delegateList[-1])
+        self.loadedSequencesDelegateList = [SequencesListDelegate()]
+        self.loadedSequencesListTable.setItemDelegateForRow(0, self.loadedSequencesDelegateList[-1])
         self.loadedSequencesListTable.setModel(self.loadedSequencesListModel)
         
         
@@ -3698,7 +3924,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.playSequenceButton.setToolTip("Play Generated Sequence")
         self.playSequenceButton.setCheckable(False)
         self.playSequenceButton.setShortcut(QtGui.QKeySequence("Alt+P"))
-        self.playSequenceButton.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Maximum)
+        self.playSequenceButton.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
         self.playSequenceButton.setIcon(self.playIcon)
         self.playSequenceButton.setEnabled(False)
         
@@ -3718,14 +3944,8 @@ class SemanticLoopingTab(QtGui.QWidget):
 #         self.autoSaveBox.setChecked(True)
 
         
-        self.newSynthesisedSequenceButton = QtGui.QPushButton("Synthesise New\nSequence")
-        self.loadSynthesisedSequenceButton = QtGui.QPushButton("Load Synthesised\nSequence")
-        self.loadSemanticSequenceButton = QtGui.QPushButton("Load Input Sequence")
-        self.loadSemanticSequenceButton.setEnabled(False)
         self.deleteSequenceButton = QtGui.QPushButton("Delete Sequence")
         self.deleteSequenceButton.setEnabled(False)
-        self.setBgImageButton = QtGui.QPushButton("Set Background Image")
-        self.setBgImageButton.setEnabled(False)
         
         self.loadNumberSequenceButton = QtGui.QPushButton("Synthesise by numbers")
         self.loadNumberSequenceButton.setEnabled(False)
@@ -3831,18 +4051,13 @@ class SemanticLoopingTab(QtGui.QWidget):
         
         self.renderFpsSpinBox.valueChanged[int].connect(self.setRenderFps)
         
-#         self.loadedSequencesListTable.currentCellChanged.connect(self.changeSelectedSemSequence)
-#         self.loadedSequencesListTable.cellPressed.connect(self.changeSelectedSemSequence)
-        
         self.loadedSequencesListTable.clicked.connect(self.changeSelectedSemSequence)
-        self.sequenceInstancesListTable.itemSelectionChanged.connect(self.changeSelectedInstances)
+#         self.sequenceInstancesListTable.clicked.connect(self.changeSelectedInstances)
+        selectionModel = self.sequenceInstancesListTable.selectionModel()
+        selectionModel.selectionChanged.connect(self.changeSelectedInstances)
         
         self.playSequenceButton.clicked.connect(self.playSequenceButtonPressed)
         self.deleteSequenceButton.clicked.connect(self.deleteGeneratedSequence)
-        self.newSynthesisedSequenceButton.clicked.connect(self.newSynthesisedSequence)
-        self.loadSynthesisedSequenceButton.clicked.connect(self.loadSynthesisedSequence)
-        self.loadSemanticSequenceButton.clicked.connect(self.loadSemanticSequence)
-        self.setBgImageButton.clicked.connect(self.setBgImage)
         self.loadNumberSequenceButton.clicked.connect(self.loadNumberSequence)
         
         
@@ -3864,6 +4079,8 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.compatibilityTypeComboBox.currentIndexChanged.connect(self.updateCompatibilityMatrices)
         self.pathCompatibilityMinJumpLengthSpinBox.editingFinished.connect(self.updateCompatibilityMatrices)
         
+        self.instancesShowIndicator.instanceDoShowChanged[int].connect(self.toggleInstancesDoShow)
+        
         ## LAYOUTS ##
         
         mainLayout = QtGui.QHBoxLayout()
@@ -3882,10 +4099,6 @@ class SemanticLoopingTab(QtGui.QWidget):
         sequenceControls = QtGui.QGroupBox("Sequence Controls")
         sequenceControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
         sequenceControlsLayout = QtGui.QGridLayout(); idx = 0
-        sequenceControlsLayout.addWidget(self.newSynthesisedSequenceButton, idx, 0, 1, 2, QtCore.Qt.AlignLeft)
-        sequenceControlsLayout.addWidget(self.loadSynthesisedSequenceButton, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
-        sequenceControlsLayout.addWidget(self.loadSemanticSequenceButton, idx, 0, 1, 4, QtCore.Qt.AlignCenter); idx += 1
-        sequenceControlsLayout.addWidget(self.setBgImageButton, idx, 0, 1, 4, QtCore.Qt.AlignCenter); idx += 1
         sequenceControlsLayout.addWidget(self.loadNumberSequenceButton, idx, 0, 1, 2, QtCore.Qt.AlignCenter)
         sequenceControlsLayout.addWidget(self.showNumbersSequenceBox, idx, 2, 1, 1, QtCore.Qt.AlignCenter)
         sequenceControlsLayout.addWidget(self.loopSequenceBox, idx, 3, 1, 1, QtCore.Qt.AlignCenter); idx += 1
@@ -3939,21 +4152,24 @@ class SemanticLoopingTab(QtGui.QWidget):
         controlsLayout.addWidget(sequenceControls)
         
         sliderLayout = QtGui.QHBoxLayout()
+        sliderLayout.addWidget(self.instancesShowIndicator)
+        sliderLayout.addWidget(self.sequenceInstancesListTable)
         sliderLayout.addWidget(self.frameIdxSlider)
         sliderLayout.addWidget(self.frameIdxSpinBox)
+        sliderLayout.setSpacing(1)
         
+        self.frameLabelWidget = QtGui.QGroupBox("")
         frameHLayout = QtGui.QHBoxLayout()
         frameHLayout.addStretch()
         frameHLayout.addWidget(self.frameLabel)
-        frameHLayout.addStretch()
-        frameHLayout.addWidget(self.sequenceInstancesListTable)
+        frameHLayout.addStretch()        
         
         frameVLayout = QtGui.QVBoxLayout()
         frameVLayout.addStretch()
         frameVLayout.addLayout(frameHLayout)
+        frameVLayout.addWidget(self.frameInfo)
         frameVLayout.addStretch()
         frameVLayout.addLayout(sliderLayout)
-        frameVLayout.addWidget(self.frameInfo)
         
         mainLayout.addLayout(controlsLayout)
         mainLayout.addLayout(frameVLayout)

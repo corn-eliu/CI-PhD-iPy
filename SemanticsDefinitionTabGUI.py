@@ -669,11 +669,12 @@ DRAW_FIRST_FRAME = 'first_frame'
 DRAW_LAST_FRAME = 'last_frame'
 DRAW_COLOR = 'color'
 LIST_SECTION_SIZE = 60
+SLIDER_INDICATOR_WIDTH=4
 
 class SemanticsSlider(QtGui.QSlider) :
     def __init__(self, orientation=QtCore.Qt.Horizontal, parent=None) :
         super(SemanticsSlider, self).__init__(orientation, parent)
-        style = "QSlider::handle:horizontal { background: #cccccc; width: 25px; border-radius: 0px; } "
+        style = "QSlider::handle:horizontal { background: #cccccc; width: 0px; border-radius: 0px; } "
         style += "QSlider::groove:horizontal { background: #dddddd; } "
         self.setStyleSheet(style)
         
@@ -693,6 +694,10 @@ class SemanticsSlider(QtGui.QSlider) :
         
         self.resize(self.width(), self.height())
         self.update()
+        
+    def mousePressEvent(self, event) :
+        if event.button() == QtCore.Qt.LeftButton :
+            self.setValue(event.pos().x()*(float(self.maximum())/self.width()))
         
     def paintEvent(self, event) :
         super(SemanticsSlider, self).paintEvent(event)
@@ -720,16 +725,22 @@ class SemanticsSlider(QtGui.QSlider) :
                 painter.drawRect(startX, yCoord+0.5, endX-startX, 5)
 
 
-            yCoord += 7
-
-
+            yCoord += 7        
+        
         ## draw slider
-
-        ## the slider is 2 pixels wide so remove 1.0 from X coord
-        sliderXCoord = np.max((self.sliderPosition()/self.numOfFrames*self.width()-1.0, 0.0))
-        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 0), 0))
-        painter.setBrush(QtGui.QBrush(QtGui.QColor.fromRgb(0, 0, 0, 128)))
-        painter.drawRect(sliderXCoord, 0, 2, self.height())
+        ## mapping slider interval to its size
+        A = 0.0
+        B = float(self.maximum())
+        a = SLIDER_INDICATOR_WIDTH/2.0
+        b = float(self.width())-SLIDER_INDICATOR_WIDTH/2.0
+        if (B-A) != 0.0 :
+            ## (val - A)*(b-a)/(B-A) + a
+            sliderXCoord = (float(self.value()) - A)*(b-a)/(B-A) + a
+        else :
+            sliderXCoord = a
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 255), SLIDER_INDICATOR_WIDTH,
+                                          QtCore.Qt.SolidLine, QtCore.Qt.FlatCap, QtCore.Qt.MiterJoin))
+        painter.drawLine(sliderXCoord, 0, sliderXCoord, self.height())
         
         painter.end()
 
@@ -1293,10 +1304,10 @@ class AddFramesToSequenceDialog(QtGui.QDialog):
         self.frameIdxSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
         self.frameIdxSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
         self.frameIdxSlider.setMinimum(0)
-        self.frameIdxSlider.setMaximum(self.numFrames-1)
+        self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames]))
         
         self.frameIdxSpinBox = QtGui.QSpinBox()
-        self.frameIdxSpinBox.setRange(0, self.numFrames-1)
+        self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames]))
         self.frameIdxSpinBox.setSingleStep(1)
         
         self.buttonBox = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel);
@@ -1477,7 +1488,7 @@ class ComputeDistanceMatrix(LongOperationClass) :
     def __init__(self, parent = None):
         super(ComputeDistanceMatrix, self).__init__(parent)
     
-    def run(self, semanticSequence, distSaveLocation, costSaveLocation) :
+    def run(self, semanticSequence, distSaveLocation, costSaveLocation, isMovingSprite, sigmaMultiplier) :
         numFrames = len(semanticSequence[DICT_FRAMES_LOCATIONS].keys())
         if numFrames > 0 :
             progress = 0.0
@@ -1574,7 +1585,7 @@ class ComputeDistanceMatrix(LongOperationClass) :
             ##
             budget = 0.6
             totalBlocks = np.sum(np.arange(1, numBlocks+1))
-            self.updateOperationTextSignal.emit("Computing distance matrix (split into {0} blocks)".format(totalBlocks))
+            self.updateOperationTextSignal.emit("Computing distance matrix (split into {0} blocks)\nMoving sprite: {1}, Jump quality: {2}".format(totalBlocks, isMovingSprite, sigmaMultiplier))
             for i in xrange(numBlocks) :
                 idxsToUse1 = frameIdxs[i*blockSize:(i+1)*blockSize]
 
@@ -1673,10 +1684,17 @@ class ComputeDistanceMatrix(LongOperationClass) :
             
             if self.abortRequested :
                 return
-            ## default
+            ## car sprites
 #             transitionCostMat = computeTransitionMatrix(distMat, 4, 0.1, 20, True, True, 0.002)
             ## for flowers
-            transitionCostMat = computeTransitionMatrix(distMat, 4, 0.1, 20, True, False, 0.3)
+#             transitionCostMat = computeTransitionMatrix(distMat, 4, 0.1, 20, True, False, 0.3)
+            
+            if isMovingSprite :
+                ## allow speed up and loop at last frame
+                transitionCostMat = computeTransitionMatrix(distMat, 4, 0.1, 20, True, True, sigmaMultiplier)
+            else :
+                ## filter all short jumps and do not loop at the last frame
+                transitionCostMat = computeTransitionMatrix(distMat, 4, 0.1, 20, False, False, sigmaMultiplier)
             
             np.save(distSaveLocation, distMat)
             np.save(costSaveLocation, transitionCostMat)
@@ -1832,6 +1850,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         seqDir = QtGui.QFileDialog.getExistingDirectory(self, "Load Frame Sequence", self.loadPath)
         self.loadFrameSequence(seqDir)
         
+        return seqDir
+        
     def loadFrameSequence(self, seqDir) :
         if seqDir != "" :
             self.tracker = None
@@ -1846,7 +1866,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             maxChars = 30
             desiredText = "Loaded Frame Sequence: " + seqDir
             desiredText = "\n ".join([desiredText[i:i+maxChars] for i in np.arange(0, len(desiredText), maxChars)])
-            self.loadFrameSequenceButton.setText(desiredText)
+            self.loadedFrameSequenceLabel.setText(desiredText)
             
             self.seqDir = seqDir
             self.frameLocs = np.sort(glob.glob(self.seqDir+"/frame-0*.png"))
@@ -1861,24 +1881,12 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             else :
                 self.bgImage = np.zeros([720, 1280, 3], np.uint8)
     
-            self.frameIdxSlider.setMaximum(self.numOfFrames-1)
-            self.frameIdxSpinBox.setRange(0, self.numOfFrames-1)
+            self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames]))
+            self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames]))
         
             self.loadSemanticSequences()
             self.allXs = np.arange(self.bgImage.shape[1], dtype=np.float32).reshape((1, self.bgImage.shape[1])).repeat(self.bgImage.shape[0], axis=0)
             self.allYs = np.arange(self.bgImage.shape[0], dtype=np.float32).reshape((self.bgImage.shape[0], 1)).repeat(self.bgImage.shape[1], axis=1)
-#         else :
-#             self.loadFrameSequenceButton.setText("Load Frame\nSequence")
-            
-#             self.seqDir = seqDir
-#             self.frameLocs = []
-#             self.numOfFrames = 0
-#             self.bgImage = np.zeros([720, 1280, 3], np.uint8)
-    
-#             self.frameIdxSlider.setMaximum(self.numOfFrames-1)
-#             self.frameIdxSpinBox.setRange(0, self.numOfFrames-1)
-        
-#             self.loadSemanticSequences()
             
         self.showFrame(self.frameIdx)
         
@@ -1935,8 +1943,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 elif endFrame == self.numOfFrames-1 :
                     self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS][endFrame+1] = ""
 
-                    self.frameIdxSlider.setMaximum(self.numOfFrames)
-                    self.frameIdxSpinBox.setRange(0, self.numOfFrames)
+                    self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames]))
+                    self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames]))
                 self.setSemanticsToDraw()
 
     def computeMedianPressed(self) :
@@ -1967,7 +1975,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         
         distanceLocation = self.seqDir + "/overlap_normalization_distMat-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
         costLocation = self.seqDir + "/transition_costs_no_normalization-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
-        self.operationThread.doRun(ComputeDistanceMatrix(), [self.semanticSequences[self.selectedSemSequenceIdx], distanceLocation, costLocation])
+        self.operationThread.doRun(ComputeDistanceMatrix(), [self.semanticSequences[self.selectedSemSequenceIdx], distanceLocation, costLocation,
+                                                             self.isMovingSpriteBox.isChecked(), self.sigmaMultiplierSlider.value()/1000.0])
         returnValue = loadingDialog.exec_()
         print "DISTANCE EXIT:", returnValue
         if returnValue == 0 :
@@ -2120,9 +2129,19 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.frameIdx = idx
         if idx >= 0 and idx < len(self.frameLocs) :
 #             print "showing", self.frameIdx
+            areFramesSegmented = False
             ## HACK ##
             im = np.ascontiguousarray(Image.open(self.frameLocs[self.frameIdx]))
-            self.frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
+            if im.shape[-1] == 3 :
+                self.frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
+            else :
+                ## this is a hack to deal with candle_wind
+                areFramesSegmented = True
+                bg = np.zeros([im.shape[0], im.shape[1], 3], np.uint8)
+                self.frameImg = QtGui.QImage(bg.data, bg.shape[1], bg.shape[0], bg.strides[0], QtGui.QImage.Format_RGB888);
+                
+                qim = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32);
+                self.frameLabel.setSegmentedImage(qim)
 
             self.frameLabel.setFixedSize(self.frameImg.width(), self.frameImg.height())
             self.frameLabel.setImage(self.frameImg)
@@ -2183,7 +2202,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                         else :
                             self.frameLabel.setScribbleImage(None)
                     else :
-                        self.frameLabel.setSegmentedImage(None)
+                        if not areFramesSegmented :
+                            self.frameLabel.setSegmentedImage(None)
                         self.frameLabel.setScribbleImage(None)
                         
                     if DICT_FRAME_SEMANTICS in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
@@ -2196,7 +2216,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 self.bboxIsSet = False
                 if self.drawOverlay(False, False, False) :
                     self.frameLabel.setOverlay(self.overlayImg)
-                self.frameLabel.setSegmentedImage(None)
+                if not areFramesSegmented :
+                    self.frameLabel.setSegmentedImage(None)
                 self.frameLabel.setScribbleImage(None)
                 
         else :
@@ -3408,6 +3429,10 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             self.showFrame(self.frameIdx, True)
         
     def segmentSequence(self) :
+        if not os.path.isfile(self.seqDir+"/median.png") :
+            QtGui.QMessageBox.warning(self, "Median Image Not Computed", ("The median image for this sequence has not been computed. The segmentation will "+
+                                                                          "not produce the expected result. Please <i>Compute Median</i> first. "))
+            return
         if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
             if self.isModeBBox :
                 self.toggleDefineMode()
@@ -3433,6 +3458,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
     def createGUI(self) :
         
         ## WIDGETS ##
+        self.loadedFrameSequenceLabel = QtGui.QLabel("No Raw Frame Sequence Loaded [Alt+F + Alt+R]")
+        self.loadedFrameSequenceLabel.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
         
         self.frameLabel = ImageLabel("Frame")
         self.frameLabel.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
@@ -3448,14 +3475,14 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.frameIdxSlider.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.frameIdxSlider.setTickPosition(QtGui.QSlider.TicksBothSides)
         self.frameIdxSlider.setMinimum(0)
-        self.frameIdxSlider.setMaximum(self.numOfFrames-1)
+        self.frameIdxSlider.setMaximum(0)
         self.frameIdxSlider.setTickInterval(100)
         self.frameIdxSlider.setSingleStep(1)
         self.frameIdxSlider.setPageStep(100)
         self.frameIdxSlider.installEventFilter(self)
     
         self.frameIdxSpinBox = QtGui.QSpinBox()
-        self.frameIdxSpinBox.setRange(0, self.numOfFrames-1)
+        self.frameIdxSpinBox.setRange(0, 0)
         self.frameIdxSpinBox.setSingleStep(1)
         self.frameIdxSpinBox.installEventFilter(self)
         
@@ -3491,7 +3518,6 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.loadedSequencesListTable.setItemDelegateForRow(0, self.delegateList[-1])
         self.loadedSequencesListTable.setModel(self.loadedSequencesListModel)
         
-        self.loadFrameSequenceButton = QtGui.QPushButton("Load Frame\nSequence")
         self.computeMedianImageButton = QtGui.QPushButton("Compute Median")
         self.computeDistanceMatrixButton = QtGui.QPushButton("Compute Distance Matrix")
         
@@ -3610,6 +3636,17 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.numExtraFramesSpinBox.setToolTip("Number of extra frames to add as extra training around the manually tagged one")
         
         
+        self.isMovingSpriteBox = QtGui.QCheckBox("Is Moving")
+        self.isMovingSpriteBox.setToolTip("Indicates if the current input sequence is to be treated as a moving sprite")
+        
+        self.sigmaMultiplierSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.sigmaMultiplierSlider.setToolTip("The higher the value (right), the less important is the jump quality and more jumps can be used during synthesis")
+        self.sigmaMultiplierSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
+        self.sigmaMultiplierSlider.setMinimum(1)
+        self.sigmaMultiplierSlider.setMaximum(1000)
+        self.sigmaMultiplierSlider.setValue(2)
+        
+        
         ## SIGNALS ##
         
         self.frameIdxSlider.valueChanged[int].connect(self.frameIdxSpinBox.setValue)
@@ -3617,7 +3654,6 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.frameIdxSpinBox.valueChanged[int].connect(self.showFrame)
         self.frameIdxSpinBox.valueChanged[int].connect(self.semanticsLabel.setCurrentFrame)
         
-        self.loadFrameSequenceButton.clicked.connect(self.loadFrameSequencePressed)
         self.computeMedianImageButton.clicked.connect(self.computeMedianPressed)
         self.computeDistanceMatrixButton.clicked.connect(self.computeDistanceMatrixPressed)
         self.addFramesToSequenceButton.clicked.connect(self.addFramesToSequencePressed)
@@ -3660,9 +3696,10 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.trackingControls = QtGui.QGroupBox("Sequence Controls")
         self.trackingControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
         trackingControlsLayout = QtGui.QGridLayout(); idx = 0
-        trackingControlsLayout.addWidget(self.loadFrameSequenceButton, idx, 0, 1, 2, QtCore.Qt.AlignCenter); idx += 1
         trackingControlsLayout.addWidget(self.computeMedianImageButton, idx, 0, 1, 1, QtCore.Qt.AlignLeft)
         trackingControlsLayout.addWidget(self.computeDistanceMatrixButton, idx, 1, 1, 1, QtCore.Qt.AlignLeft); idx += 1
+        trackingControlsLayout.addWidget(self.isMovingSpriteBox, idx, 0, 1, 1, QtCore.Qt.AlignLeft)
+        trackingControlsLayout.addWidget(self.sigmaMultiplierSlider, idx, 1, 1, 1, QtCore.Qt.AlignLeft); idx += 1
         trackingControlsLayout.addWidget(self.newSemSequenceButton, idx, 0, 1, 1, QtCore.Qt.AlignLeft)
         trackingControlsLayout.addWidget(self.semanticsColorButton, idx, 1, 1, 1, QtCore.Qt.AlignLeft); idx += 1
         trackingControlsLayout.addWidget(self.addFramesToSequenceButton, idx, 0, 1, 1, QtCore.Qt.AlignCenter)
@@ -3742,6 +3779,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         mainLayout = QtGui.QHBoxLayout()
         
         controlsLayout = QtGui.QVBoxLayout()
+        controlsLayout.addWidget(self.loadedFrameSequenceLabel)
         controlsLayout.addWidget(self.loadedSequencesListTable)
         controlsLayout.addWidget(self.trackingControls)
         controlsLayout.addWidget(self.segmentationControls)
@@ -3775,8 +3813,6 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         mainLayout.addLayout(controlsLayout)
         mainLayout.addLayout(frameVLayout)
         self.setLayout(mainLayout)
-        
-        
         
         self.showOpticalFlowPriorControls(False)
         self.showPatchDifferencePriorControls(False)

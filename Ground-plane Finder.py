@@ -84,6 +84,34 @@ def line2lineIntersection(line1, line2) :
     else :
         raise Exception("lines are parallel")
 
+def printMatrix(mat, useQt = True) :
+    if useQt :
+        sys.stdout.write("QtGui.QMatrix4x4(")
+    else :
+        sys.stdout.write("np.array([")
+        
+    for i in xrange(mat.shape[0]) :
+        if useQt :
+            sys.stdout.write("{0}".format(mat[i, 0]))
+        else :
+            sys.stdout.write("[{0}".format(mat[i, 0]))
+        for j in xrange(1, mat.shape[1]) :
+            sys.stdout.write(", {0}".format(mat[i, j]))
+        
+        if i < mat.shape[0]-1 :
+            if useQt :
+                sys.stdout.write(",\n\t\t ")
+            else :
+                sys.stdout.write("],\n\t  ")
+        else :
+            if not useQt :
+                sys.stdout.write("]")
+    if useQt :
+        sys.stdout.write(")")
+    else :
+        sys.stdout.write("])")
+    print
+
 # <codecell>
 
 # im = cv2.cvtColor(cv2.imread(dataPath+dataSet+"median.png", cv2.CV_LOAD_IMAGE_UNCHANGED), cv2.COLOR_BGRA2RGBA)
@@ -180,7 +208,7 @@ def line2lineIntersection(line1, line2) :
 
 # <codecell>
 
-preloadedSpritePatches = list(np.load(dataPath + dataSet + "preloadedSpritePatches.npy"))
+preloadedSpritePatches = list(np.load("/media/ilisescu/Data1/PhD/data/" + dataSet + "preloadedSpritePatches.npy"))
 
 # <codecell>
 
@@ -288,6 +316,14 @@ class ImageLabel(QtGui.QLabel) :
                     
                     painter.drawEllipse(QtCore.QPointF(lines[i, 0], lines[i, 1]), POINT_SELECTION_RADIUS, POINT_SELECTION_RADIUS)
                     painter.drawEllipse(QtCore.QPointF(lines[i, 2], lines[i, 3]), POINT_SELECTION_RADIUS, POINT_SELECTION_RADIUS)
+                    
+                ## draw horizon line
+                painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255, 0, 255, 192), 5, 
+                              QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+                point1 = line2lineIntersection(lines[0, :], lines[1, :])
+                point2 = line2lineIntersection(lines[2, :], lines[3, :])
+                painter.drawLine(QtCore.QPointF(point1[0], point1[1]),
+                                 QtCore.QPointF(point2[0], point2[1]))
                     
             ## draw selected point        
             if self.selectedPoint != None :
@@ -404,7 +440,7 @@ class Window(QtGui.QWidget):
         super(Window, self).__init__()
         
         ## parameters changed through UI
-        self.spriteIdx = 8
+        self.spriteIdx = 0
         self.currentFrame = 0
         self.trajectorySmoothness = 15
         self.orientationsSmoothness = 60
@@ -416,12 +452,23 @@ class Window(QtGui.QWidget):
         self.trajectorySizeDelta = np.array([[0, 0]])
         self.trajectoryPositionDelta = np.array([[0, 0]])
         
-        self.distortionParameter = -0.18
+        self.distortionParameter = -0.13
+        self.distortionRatio = 10.0
         
-        self.lines = np.array([[  281.3,   472. ,    66. ,   251.7],
-                               [  458.7,   329.7,   191.7,   224.3],
-                               [  401. ,   461. ,   905.5,   161. ],
-                               [ 1269.7,   595. ,  1113.7,   186. ]], dtype=float)
+#         self.initLines = np.array([[  281.3,   472. ,    66. ,   251.7],
+#                                [  458.7,   329.7,   191.7,   224.3],
+#                                [  401. ,   461. ,   905.5,   161. ],
+#                                [ 1269.7,   595. ,  1113.7,   186. ]], dtype=float)
+        self.initLines = np.array([[ 336.3,  432. ,   91. ,  241.7],
+                               [ 458.7,  329.7,  191.7,  224.3],
+                               [ 401. ,  461. ,  905.5,  161. ],
+                               [ 866.7,  369. ,  971.7,  194. ]], dtype=float)
+        self.initLines = np.array([[336.3, 432.0, 82.0, 243.7],
+                                   [458.7, 329.7, 175.7, 220.3],
+                                   [401.0, 461.0, 891.5, 170.0],
+                                   [866.7, 369.0, 962.7, 194.0]], dtype=float)
+
+        self.lines = np.copy(self.initLines)
         
         self.defaultSettings = {'bboxWidthSpinBox':180,
                                 'bboxHeightSpinBox':60, 
@@ -436,10 +483,7 @@ class Window(QtGui.QWidget):
                                 'trajectoryXSpinBox':0,
                                 'trajectoryYSpinBox':0,
                                 'distortionParameterSpinBox':-0.18, 
-                                'lines':np.array([[  281.3,   472. ,    66. ,   251.7],
-                                                  [  458.7,   329.7,   191.7,   224.3],
-                                                  [  401. ,   461. ,   905.5,   161. ],
-                                                  [ 1269.7,   595. ,  1113.7,   186. ]], dtype=float)}
+                                'lines':np.copy(self.initLines)}
         
         ## create all widgets and layout
         self.createGUI()
@@ -451,8 +495,8 @@ class Window(QtGui.QWidget):
         
         self.topDownScaling = np.eye(2)*0.1
         
-        self.cameraMatrix = np.array([[1280, 0, 640], [0, 1280, 320], [0, 0, 1]])
-        self.undistortParameters = np.array([self.distortionParameter, self.distortionParameter, 0.0, 0.0, 0.0])
+        self.cameraMatrix = np.array([[702.73602295, 0, 640], [0, 702.73602295, 320], [0, 0, 1]])
+        self.undistortParameters = np.array([self.distortionParameter, self.distortionParameter*self.distortionRatio/100.0, 0.0, 0.0, 0.0])
         
         ## plane grid points
         gridIdxs = meshgrid(arange(-8, 1.4, 0.1), arange(-8, 2.6, 0.2))
@@ -502,8 +546,8 @@ class Window(QtGui.QWidget):
                                                          self.cameraMatrix, self.undistortParameters, P=self.cameraMatrix)[0, :, :]
         
         ## update homography (update rectangleCorners in a different method called before this one and after lines have been changed)
-        self.homography = cv2.findHomography(np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float)*self.unitSquareSize+self.unitSquarePos, 
-                                             self.rectangleCorners[[1, 2, 3, 0], :])[0]
+        self.homography = cv2.findHomography(np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=float)*self.unitSquareSize+self.unitSquarePos, 
+                                             self.rectangleCorners[[0, 1, 2, 3], :])[0]
         
         
         ## update grid points for undistorted view
@@ -781,7 +825,10 @@ class Window(QtGui.QWidget):
         
     def changeDistortionParameter(self) :
         self.distortionParameter = self.distortionParameterSpinBox.value()
-        self.undistortParameters = np.array([self.distortionParameter, self.distortionParameter, 0.0, 0.0, 0.0])
+        self.distortionRatio = self.distortionRatioSpinBox.value()/100.0
+        self.undistortParameters = np.array([self.distortionParameter, self.distortionParameter*self.distortionRatio, 0.0, 0.0, 0.0])
+        
+        self.originalImageInfo.setText("Original: Distortion Parameter = {0:05f}, Ratio:{1:05f}".format(self.distortionParameter, self.distortionRatio))
         
         self.updateData()
         
@@ -825,7 +872,7 @@ class Window(QtGui.QWidget):
         
     def saveSettings(self) :
         
-        settings = {DICT_SPRITE_IDX:self.spriteIdx,
+        settings = {DICT_SEQUENCE_IDX:self.spriteIdx,
                     DICT_SEQUENCE_NAME:trackedSprites[self.spriteIdx][DICT_SEQUENCE_NAME],
                     'bboxWidthSpinBox':self.bboxWidthSpinBox.value(),
                     'bboxHeightSpinBox':self.bboxHeightSpinBox.value(), 
@@ -942,11 +989,11 @@ class Window(QtGui.QWidget):
         unitSquarePosLabel = QtGui.QLabel("Unit square position (x, y)")
         unitSquarePosLabel.setToolTip("Set the position of the unit square in the top down morphed space")
         self.unitSquareXSpinBox = QtGui.QSpinBox()
-        self.unitSquareXSpinBox.setRange(1, 10000)
+        self.unitSquareXSpinBox.setRange(0, 10000)
         self.unitSquareXSpinBox.setValue(self.unitSquarePos[0, 0])
         
         self.unitSquareYSpinBox = QtGui.QSpinBox()
-        self.unitSquareYSpinBox.setRange(1, 5000)
+        self.unitSquareYSpinBox.setRange(0, 5000)
         self.unitSquareYSpinBox.setValue(self.unitSquarePos[0, 1])
         
         
@@ -992,6 +1039,11 @@ class Window(QtGui.QWidget):
         self.distortionParameterSpinBox.setSingleStep(0.01)
         self.distortionParameterSpinBox.setValue(self.distortionParameter)
         
+        self.distortionRatioSpinBox = QtGui.QDoubleSpinBox()
+        self.distortionRatioSpinBox.setRange(-100.0, 100.0)
+        self.distortionRatioSpinBox.setSingleStep(0.01)
+        self.distortionRatioSpinBox.setValue(self.distortionRatio)
+        
         
         self.doShowUndistortedCheckBox = QtGui.QCheckBox("")
         self.doShowUndistortedCheckBox.setChecked(True)
@@ -1029,6 +1081,7 @@ class Window(QtGui.QWidget):
         self.orientationsSmoothnessSpinBox.valueChanged[int].connect(self.changeTrajectoryFiltering)
         
         self.distortionParameterSpinBox.valueChanged[float].connect(self.changeDistortionParameter)
+        self.distortionRatioSpinBox.valueChanged[float].connect(self.changeDistortionParameter)
         
         
         self.doShowUndistortedCheckBox.stateChanged.connect(self.doShowUndistortedChanged)
@@ -1073,8 +1126,9 @@ class Window(QtGui.QWidget):
         controlsLayout.addWidget(QtGui.QLabel("Trajectory position delta (x, y)"), 7, 0, 1, 1, QtCore.Qt.AlignLeft)
         controlsLayout.addWidget(self.trajectoryXSpinBox, 7, 1, 1, 1, QtCore.Qt.AlignLeft)
         controlsLayout.addWidget(self.trajectoryYSpinBox, 7, 2, 1, 1, QtCore.Qt.AlignLeft)
-        controlsLayout.addWidget(QtGui.QLabel("Distortion Parameter"), 8, 0, 1, 1, QtCore.Qt.AlignLeft)
-        controlsLayout.addWidget(self.distortionParameterSpinBox, 8, 1, 1, 2, QtCore.Qt.AlignLeft)
+        controlsLayout.addWidget(QtGui.QLabel("Distortion Parameter/Ratio"), 8, 0, 1, 1, QtCore.Qt.AlignLeft)
+        controlsLayout.addWidget(self.distortionParameterSpinBox, 8, 1, 1, 1, QtCore.Qt.AlignLeft)
+        controlsLayout.addWidget(self.distortionRatioSpinBox, 8, 2, 1, 1, QtCore.Qt.AlignLeft)
         controlsLayout.addWidget(QtGui.QLabel("Show Undistorted"), 9, 0, 1, 1, QtCore.Qt.AlignLeft)
         controlsLayout.addWidget(self.doShowUndistortedCheckBox, 9, 1, 1, 2, QtCore.Qt.AlignLeft)
         controlsLayout.addWidget(self.saveSettingsForSpriteButton, 10, 0, 1, 1, QtCore.Qt.AlignLeft)
@@ -1093,12 +1147,418 @@ class Window(QtGui.QWidget):
         mainLayout.addLayout(originalImageLayout)
         mainLayout.addLayout(topDownImageLayout)
         self.setLayout(mainLayout)
+        
 
 # <codecell>
 
 window = Window()
 window.show()
 app.exec_()
+
+# <codecell>
+
+printMatrix(window.lines, False)
+
+# <codecell>
+
+## CODE THAT FINDS THE TRANSFORMATION TO MOVE THE IMAGE SPACE INTERSECTION RECTANGLE TO AN ARBITRARY POINT IN IMAGE SPACE AFTER FINDING THE HOMOGRAPHY (could make this part of the UI)
+figure(); imshow(window.undistortedBgImage)
+plot(window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], c="magenta")
+
+originCornerIdx = 0
+rotateAboutZ = 0#np.pi
+flip = False
+# imageOriginPoint = window.rectangleCorners[originCornerIdx, :2]
+imageOriginPoint = np.array([713.0, 275.0])
+scatter(imageOriginPoint[0], imageOriginPoint[1], c="red", marker="x", s=50)
+
+worldOriginPoint = np.dot(np.linalg.inv(window.homography), np.array([[imageOriginPoint[0], imageOriginPoint[1], 1]]).T)
+worldOriginPoint /= worldOriginPoint[-1, 0]
+worldRectangleCorners = np.dot(np.linalg.inv(window.homography), np.array([window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], np.ones(len(window.rectangleCorners))]))
+worldRectangleCorners /= worldRectangleCorners[-1, :]
+transform = np.array([[np.cos(rotateAboutZ), -np.sin(rotateAboutZ), worldOriginPoint[0, 0]-worldRectangleCorners[0, originCornerIdx]],
+                      [np.sin(rotateAboutZ), np.cos(rotateAboutZ), worldOriginPoint[1, 0]-worldRectangleCorners[1, originCornerIdx]],
+                      [0, 0, 1]])
+print worldRectangleCorners.T[:, :-1]
+print transform
+# imageAdjustedRectangleCorners = np.dot(np.dot(transform, window.homography), worldRectangleCorners)
+imageAdjustedRectangleCorners = np.dot(np.dot(window.homography, transform), worldRectangleCorners)
+imageAdjustedRectangleCorners /= imageAdjustedRectangleCorners[-1, :]
+print imageAdjustedRectangleCorners
+plot(imageAdjustedRectangleCorners[0, :], imageAdjustedRectangleCorners[1, :], c="blue")
+printMatrix(np.dot(window.homography, transform), False)
+printMatrix(imageAdjustedRectangleCorners, False)
+
+# <codecell>
+
+traj = np.dot(np.dot(window.homography, transform), worldRectangleCorners)
+
+# <codecell>
+
+from mpl_toolkits.mplot3d import Axes3D
+print window.homography
+bgImage = np.array(Image.open("/home/ilisescu/PhD/data/havana/median.png"))
+bgImage = np.concatenate([bgImage, np.ones([bgImage.shape[0], bgImage.shape[1], 1])*255], axis=2).astype(bgImage.dtype)
+downsample = 5
+downsampledSize = np.array(bgImage.shape[0:2])/downsample
+# figure(); imshow(bgImage)
+gridXYs = (np.indices(downsampledSize).reshape([2, np.prod(downsampledSize)]).T*downsample)[:, ::-1]
+gridXYs = np.concatenate([gridXYs, np.ones([len(gridXYs), 1], int)], axis=1)
+# projectedXYs = np.concatenate([window.rectangleCorners, np.ones([len(window.rectangleCorners), 1], int)], axis=1)
+projectedXYs = gridXYs
+hom = cv2.findHomography(np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float), window.rectangleCorners[[0, 1, 2, 3], :])[0]
+projectedXYs = np.dot(np.linalg.inv(hom), projectedXYs.T)#[:1000, :]
+# projectedXYs = np.dot(hom, projectedXYs.T)#[:1000, :]
+projectedXYs /= projectedXYs[-1, :]
+projectedXYs = projectedXYs.T
+
+fig = figure()
+ax = fig.add_subplot(111, projection='3d')
+# xlim([4000, 4300]); ylim([2500, 3100])
+# xlim([0.0, 0.7]); ylim([1.1, 1.3])
+ax.scatter(projectedXYs[:, 0], projectedXYs[:, 1], zs=projectedXYs[:, 2], c=bgImage[gridXYs[:, 1], gridXYs[:, 0], :]/255.0, depthshade=False, marker='o', lw=0, s=40)
+
+# <codecell>
+
+#         ## update homography (update rectangleCorners in a different method called before this one and after lines have been changed)
+#         self.homography = cv2.findHomography(np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float)*self.unitSquareSize+self.unitSquarePos, 
+#                                              self.rectangleCorners[[0, 1, 2, 3], :])[0]
+print window.unitSquareSize, window.unitSquarePos
+print np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float)*window.unitSquareSize+window.unitSquarePos
+print np.array(points3D[:2, :].T)
+
+# <codecell>
+
+## machine vision exercise
+# points3D = np.array([[-100.0, -100.0, 100.0, 100.0, 0],
+#                      [-100.0, 100.0, 100.0, -100.0, 0],
+#                      [0, 0, 0, 0, 0],
+#                      [1, 1, 1, 1, 1]])
+# points2D = np.array([[267.417088203304, 230.950454270139, 531.424920127796, 482.360490976690, 378.775379823913],
+#                      [396.268149094488, 288.114354936402, 237.834102473080, 358.399402407348, 329.440795384216],
+#                      [1, 1, 1, 1, 1]])
+points3D = np.array([[-1.0, -1.0, 1.0, 1.0],
+                     [-1.0, 1.0, 1.0, -1.0],
+                     [0, 0, 0, 0],
+                     [1, 1, 1, 1]])
+points2D = np.array([[267.417088203304, 230.950454270139, 531.424920127796, 482.360490976690],
+                     [396.268149094488, 288.114354936402, 237.834102473080, 358.399402407348],
+                     [1, 1, 1, 1]])
+K = np.array([[640.0, 0, 320.0],
+              [0, 640.0, 240.0],
+              [0, 0, 1]])
+
+# <codecell>
+
+500.0/300.0/2
+
+# <codecell>
+
+## my case
+# points3D = np.array([[0.0, 0.0, 1.0, 1.0],
+#                      [0.0, 1.0, 1.0, 0.0],
+#                      [0.0, 0.0, 0.0, 0.0],
+#                      [1.0, 1.0, 1.0, 1.0]])
+squareAspectRatio = 500.0/300.0
+points3D = np.array([[-squareAspectRatio/2, -squareAspectRatio/2, squareAspectRatio/2, squareAspectRatio/2],
+                     [-.5, .5, .5, -.5],
+                     [0.0, 0.0, 0.0, 0.0],
+                     [1.0, 1.0, 1.0, 1.0]])
+# points2D = np.array([[376.272303289, 360.518821706, 547.652452311, 558.779583794],
+#                      [220.000400557, 45.1190544422, 12.1800833365, 247.936181626],
+#                      [1.0, 1.0, 1.0, 1.0]]) ### using the building facade
+# points2D = np.array([[282.717088927, 266.331279791, 489.785034703, 494.487981223],
+#                      [352.537260835, 267.269658008, 217.815813282, 290.334126427],
+#                      [1.0, 1.0, 1.0, 1.0]]) ### using the light poles
+# points2D = np.array([[385.535344098, 556.727428769, 807.633684593, 672.437698898],
+#                      [470.196029278, 368.396970008, 467.443859012, 692.770501836],
+#                      [1.0, 1.0, 1.0, 1.0]]) ### middle of intersection
+points2D = np.array([[713.0, 759.017668294, 918.283494055, 896.687484574],
+                     [275.0, 247.835288427, 272.113391191, 310.853978155],
+                     [1.0, 1.0, 1.0, 1.0]]) ### using the corner of the intersection
+# points2D = np.array([[200.0, 200.0, 300.0, 300.0],
+#                      [600.0, 500.0, 500.0, 600.0],
+#                      [1.0, 1.0, 1.0, 1.0]]) ### some random square to check if homography just scales
+K = np.array([[702.736053, 0, 640.0],
+              [0, 702.736053, 360.0],
+              [0, 0, 1]])
+# K = np.array([[600, 0, 640.0],
+#               [0, 600, 360.0],
+#               [0, 0, 1]])
+
+# <codecell>
+
+## use p3p  Gao from opencv
+objectPoints = np.float64(points3D[:-1, :].T).reshape([points3D.shape[1], 1, 3])
+imagePoints = np.float64(points2D[:-1, :].T).reshape([points2D.shape[1], 1, 2])
+cameraMatrix = np.float64(K)
+distCoeffs = np.zeros([5, 1])
+## distortion should be 0 as the imagePoints are already defined in an undistorted image
+# distCoeffs[0] = -0.19
+# distCoeffs[1] = -0.19
+
+_, rvec, tvec = cv2.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, flags=cv2.CV_P3P)
+rotMat, _ = cv2.Rodrigues(rvec)
+
+T = np.concatenate([rotMat, tvec], axis=1)
+T = np.concatenate([T, np.array([[0, 0, 0, 1]])], axis=0)
+
+reprojectedPoints = np.dot(T, points3D)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+reprojectedPoints = np.dot(cameraMatrix, reprojectedPoints)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+print reprojectedPoints
+print imagePoints[:, 0, :].T
+print cv2.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)[0][:, 0, :].T
+printMatrix(T, False)
+printMatrix(np.linalg.inv(T), False)
+
+# <codecell>
+
+tmp = np.dot(cameraMatrix, np.concatenate([rotMat, tvec], axis=1))
+print np.dot(tmp, points3D)/np.dot(tmp, points3D)[-1, :]
+print points3D
+R, Q = sp.linalg.rq(tmp, mode="economic")
+print R
+print Q
+
+# <codecell>
+
+print np.linalg.det(rotMat)
+
+# <codecell>
+
+print np.dot(K, np.linalg.inv(K))
+print np.dot(T, np.linalg.inv(T))
+print
+inverseT = np.linalg.inv(np.dot(K, T[:-1, [0, 1, 3]]))
+print inverseT
+tmp = np.dot(inverseT, x_hom)
+print tmp
+print tmp/tmp[-1, :]
+
+# <codecell>
+
+def cameraPoseFromHomography(H):
+    H1 = H[:, 0]
+    H2 = H[:, 1]
+    H3 = np.cross(H1, H2)
+
+    norm1 = np.linalg.norm(H1)
+    norm2 = np.linalg.norm(H1)
+    tnorm = (norm1 + norm2) / 2.0;
+
+    T = H[:, 2] / tnorm
+    return np.mat([H1, H2, H3, T])
+
+def cameraPoseFromHomography2(H):  
+    norm1 = np.linalg.norm(H[:, 0])
+    norm2 = np.linalg.norm(H[:, 1])
+    tnorm = (norm1 + norm2) / 2.0;
+
+    H1 = H[:, 0] / norm1
+    H2 = H[:, 1] / norm2
+    H3 = np.cross(H1, H2)
+    T = H[:, 2] / tnorm
+
+    return np.array([H1, H2, H3, T]).transpose()
+
+print cameraPoseFromHomography(hom)
+print cameraPoseFromHomography2(hom)
+
+# <codecell>
+
+x_hom = np.copy(points2D)
+w_hom = np.copy(points3D)
+print x_hom
+print w_hom
+
+hom = cv2.findHomography(np.array(w_hom[:2, :].T), np.array(x_hom[:-1, :].T))[0]
+print
+printMatrix(hom, False)
+print
+print "x_hom = hom*w_hom"
+print np.dot(hom, np.array(np.concatenate([w_hom[:2, :], [np.ones(x_hom.shape[1])]])))/np.dot(hom, np.array(np.concatenate([w_hom[:2, :], [np.ones(x_hom.shape[1])]])))[-1, :]
+print
+
+
+hom_prime = np.dot(np.linalg.pinv(K), hom)
+# print hom
+# print 
+# print lambdaPrime*np.dot(K, np.concatenate([rot[:, :2], trans], axis=1))
+print "next 2 arrays should be equal"
+print np.dot(hom_prime, np.array(np.concatenate([w_hom[:2, :], [np.ones(x_hom.shape[1])]])))/np.dot(hom_prime, np.array(np.concatenate([w_hom[:2, :], [np.ones(x_hom.shape[1])]])))[-1, :]
+print np.dot(np.linalg.pinv(K), x_hom)
+print
+
+print "rot_2cols, rot_col3"
+U, s, Vt = np.linalg.svd(hom_prime[:, :2])
+rot_2cols = np.dot(np.dot(U, np.eye(3, 2)), Vt)
+# rot_2cols[:, 0] *= -1
+rot_col3 = np.cross(rot_2cols[:, 0], rot_2cols[:, 1]).reshape([3, 1])
+print rot_2cols
+print rot_col3
+print
+
+print "rot",
+rot = np.concatenate([rot_2cols, rot_col3], axis=1)
+print np.linalg.det(rot)
+if np.linalg.det(rot) <= -0.99 :
+    print "det stuff"
+    rot[:, -1] *= -1
+print rot
+print
+
+print "scaling, translation"
+scaling = np.sum(hom_prime[:, :2]/rot_2cols)/6
+translation = (hom_prime[:, -1]/scaling).reshape([3, 1])
+print scaling
+print translation
+print
+
+print "hom_prime = scaling*[rot_2cols | translation]"
+print hom_prime
+print scaling*np.concatenate([rot_2cols, translation], axis=1)
+print
+
+print "hom = scaling*K[rot_2cols | translation]"
+print hom
+print scaling*np.dot(K, np.concatenate([rot_2cols, translation], axis=1))
+print
+
+T = np.concatenate([rot, translation], axis=1)
+T = np.concatenate([T, np.array([[0, 0, 0, 1]])], axis=0)
+printMatrix(T)
+printMatrix(np.linalg.inv(T))
+printMatrix(K, False)
+print
+print "w_hom = T^-1K^-1x_hom"
+projectedXs = np.dot(np.linalg.pinv(K), x_hom)
+projectedXs /= projectedXs[-1, :]
+projectedXs = np.dot(np.linalg.pinv(T), np.concatenate([projectedXs, np.ones([1, len(projectedXs.T)])], axis=0))
+projectedXs /= projectedXs[-1, :]
+print w_hom
+print projectedXs
+
+print
+reprojectedPoints = np.dot(T, points3D)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+reprojectedPoints = np.dot(K, reprojectedPoints)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+print "x_hom = TKw_hom"
+print x_hom
+print reprojectedPoints
+figure()
+imshow(window.undistortedBgImage)
+scatter(reprojectedPoints.T[:, 0], reprojectedPoints.T[:, 1], c=["red", "cyan", "blue", "yellow"], marker="x", s=50)
+plot(reprojectedPoints.T[[0, 1, 2, 3, 0], 0], reprojectedPoints.T[[0, 1, 2, 3, 0], 1], c="cyan")
+scatter(points2D.T[:, 0], points2D.T[:, 1], c=["red", "cyan", "blue", "yellow"], marker="o", s=30)
+plot(points2D.T[[0, 1, 2, 3, 0], 0], points2D.T[[0, 1, 2, 3, 0], 1], c="yellow")
+
+# <codecell>
+
+## found on the internet here http://urbanar.blogspot.co.uk/2011/04/from-homography-to-opengl-modelview.html
+inverseK = np.array([[1.0/K[0, 0], 0.0, -K[0, 2]/K[0, 0]],
+                     [0.0, 1.0/K[1, 1], -K[1, 2]/K[1, 1]],
+                     [0.0, 0.0, 1.0]])
+h1 = np.array(hom[:, 0]).reshape([3, 1])
+h2 = np.array(hom[:, 1]).reshape([3, 1])
+h3 = np.array(hom[:, 2]).reshape([3, 1])
+
+inverseH1 = np.dot(inverseK, h1)
+lambdaVal = np.sqrt(np.sum(h1**2))
+if lambdaVal != 0 :
+    lambdaVal = 1.0/lambdaVal
+    inverseK *= lambdaVal
+    
+r1 = np.dot(inverseK, h1)
+r2 = np.dot(inverseK, h2)
+r3 = np.cross(r1.flatten(), r2.flatten()).reshape([3, 1])
+rotMat = np.array([[r1[0, 0], -r2[0, 0], -r3[0, 0]],
+                   [-r1[1, 0], r2[1, 0], r3[1, 0]],
+                   [-r1[2, 0], r2[2, 0], r3[2, 0]]])
+tVec = np.dot(inverseK, h3)*np.array([[1.0], [-1.0], [-1.0]])
+rotU, rotS, rotVt = np.linalg.svd(rotMat)
+rotMat = np.dot(rotU, rotVt)
+printMatrix(np.concatenate([np.concatenate([rotMat, tVec], axis=1), np.array([[0, 0, 0, 1]])], axis=0))
+printMatrix(np.linalg.inv(np.concatenate([np.concatenate([rotMat, tVec], axis=1), np.array([[0, 0, 0, 1]])], axis=0)))
+
+# <codecell>
+
+printMatrix(hom, False)
+# print s
+
+# <codecell>
+
+# points3D = np.array([[-100.0, -100.0, 100.0, 100.0, 0],
+#                      [-100.0, 100.0, 100.0, -100.0, 0],
+#                      [0, 0, 0, 0, 0],
+#                      [1, 1, 1, 1, 1]])
+# points2D = np.array([[267.417088203304, 230.950454270139, 531.424920127796, 482.360490976690, 378.775379823913],
+#                      [396.268149094488, 288.114354936402, 237.834102473080, 358.399402407348, 329.440795384216],
+#                      [1, 1, 1, 1, 1]])
+points3D = np.array([[0, 0, 0, 1], [0, 1, 0, 1], [1, 1, 0, 1], [1, 0, 0, 1]], dtype=float).T
+points2D = np.concatenate([window.rectangleCorners[[0, 1, 2, 3], :], np.ones([len(window.rectangleCorners), 1])], axis=1).T
+# K = np.eye(3)
+K = np.array([[702.736053, 0, 640.0],
+              [0, 702.736053, 360.0],
+              [0, 0, 1]])
+# hom = cv2.findHomography(np.array(points3D[:2, :].T), np.dot(np.linalg.pinv(K), points2D)[:2, :].T)[0]
+hom = cv2.findHomography(np.array(points3D[:2, :].T), np.array(points2D[:-1, :].T))[0]
+# hom = np.dot(window.homography, transform)
+# print hom
+
+
+omega = np.dot(np.linalg.pinv(K), hom)
+# omega = hom
+U, s, Vt = np.linalg.svd(omega[:, :2])
+rot = np.dot(U, np.dot(np.eye(3, 2), Vt))
+rot = np.concatenate([rot, np.cross(rot[:, 0], rot[:, 1]).reshape([3, 1])], axis=1)
+print np.linalg.det(rot)
+if np.linalg.det(rot) == -1 :
+    rot[:, -1] *= -1
+print rot
+lambdaPrime = np.mean(omega[:, :-1]/rot[:, :-1])
+trans = (omega[:, -1]/lambdaPrime).reshape([3, 1])
+print trans
+T = np.concatenate([rot, trans], axis=1)
+# T = np.concatenate([np.eye(3), trans], axis=1)
+T = np.concatenate([T, np.array([[0, 0, 0, 1]])], axis=0)
+print T
+print
+print
+reprojectedPoints = np.dot(T, points3D)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+reprojectedPoints = np.dot(K, reprojectedPoints)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+print 
+print reprojectedPoints.T
+print points2D.T[:, :-1]
+figure()
+scatter(reprojectedPoints.T[:, 0], reprojectedPoints.T[:, 1], marker="x", s=40)
+scatter(points2D.T[:, 0], points2D.T[:, 1], c="none", marker="o", s=40)
+printMatrix(T)
+printMatrix(K, False)
+
+# <codecell>
+
+printMatrix(hom, False)
+
+# <codecell>
+
+printMatrix(window.homography, False)
+
+# <codecell>
+
+figure(); scatter(projectedXYs[:, 0], projectedXYs[:, 1], c=bgImage[gridXYs[:, 1], gridXYs[:, 0], :]/255.0, marker='o', lw=0, s=40)
+# figure(); imshow(bgImage[gridXYs[:, 1], gridXYs[:, 0], :].reshape([downsampledSize[0], downsampledSize[1], 4]))
+
+# <codecell>
+
+print gridXYs[np.argmin(np.sum(np.abs(gridXYs[:, :2]-window.rectangleCorners[0, :]), axis=1)), :]
+print projectedXYs[np.argmin(np.sum(np.abs(gridXYs[:, :2]-window.rectangleCorners[0, :]), axis=1)), :]
+print gridXYs[np.argmin(np.sum(np.abs(gridXYs[:, :2]-window.rectangleCorners[1, :]), axis=1)), :]
+print projectedXYs[np.argmin(np.sum(np.abs(gridXYs[:, :2]-window.rectangleCorners[1, :]), axis=1)), :]
 
 # <codecell>
 

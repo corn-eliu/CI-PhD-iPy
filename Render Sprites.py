@@ -509,10 +509,11 @@ def compareBBoxes(x, y, verbose=False) :
 
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/digger/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_fattestbar/"
+baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/havanaComplex/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/flowers/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/street_complex/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_full/"
-baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_planes_latest/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_planes_latest/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/moos/wave_user_study_task/"
 doComputePoisson = True
 
@@ -547,9 +548,9 @@ if doComputePoisson :
 
 
     avgTime = 0.0
-    for iterNum, f in enumerate(arange(minFrames)[0:]) :
+    for iterNum, f in enumerate(arange(minFrames)[594:595]) :
         t = time.time()
-        for sIdx, seq in enumerate(synthSeq[DICT_SEQUENCE_INSTANCES][0:]) :
+        for sIdx, seq in enumerate(synthSeq[DICT_SEQUENCE_INSTANCES][1:2]) :
             seq1Idx = seq[DICT_SEQUENCE_IDX]
             frame1Idx = seq[DICT_SEQUENCE_FRAMES][f]
 
@@ -567,7 +568,7 @@ if doComputePoisson :
                 frame1Offset = seq[DICT_OFFSET]
                 frame1Scale = seq[DICT_SCALE]
                 
-            if not os.path.isfile(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx)) :
+            if True :#not os.path.isfile(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx)) :
 
                 if frame1Key in semanticSequences[seq1Idx][DICT_FRAMES_LOCATIONS] :
 
@@ -587,7 +588,7 @@ if doComputePoisson :
                             offset[0]+frame1Offset[0]:offset[0]+frame1Offset[0]+patchSize[1], :] = sprite1[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :]
                     sprite1 = np.copy(tmp)
                     del tmp
-                    Image.fromarray(sprite1.astype(np.uint8)).save(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx))
+#                     Image.fromarray(sprite1.astype(np.uint8)).save(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx))
 
         avgTime = (avgTime*iterNum + time.time()-t)/(iterNum+1)
         remainingTime = avgTime*(maxFramesToRender-iterNum-1)/60.0
@@ -595,8 +596,21 @@ if doComputePoisson :
                          " (avg time: " + np.string_(avgTime) + " secs --- remaining: " +
                          np.string_(int(np.floor(remainingTime))) + ":" + np.string_(int((remainingTime - np.floor(remainingTime))*60)) + ")")
         sys.stdout.flush()
+        
+        sprite1 = sprite1[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]
+        alphaMask = (sprite1[:, :, -1]/255.0).reshape([patchSize[0], patchSize[1], 1])
+        sprite1 = sprite1[:, :, :-1]
+        compositedBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + sprite1*alphaMask).astype(np.uint8)
+        compositedNotBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + spritePatch*alphaMask).astype(np.uint8)
+        figure(); imshow(compositedBlended)
+        figure(); imshow(compositedNotBlended)
     print 
     print "done"
+
+# <codecell>
+
+print patchSize, offset
+print offset[0, 0],offset[0, 0]+patchSize[1], offset[1, 0],offset[1, 0]+patchSize[0]
 
 # <codecell>
 

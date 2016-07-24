@@ -287,6 +287,11 @@ class Window(QtGui.QMainWindow):
         with open("logFiles/log-"+str(datetime.datetime.now()), "w+") as f:
             f.write("LOG:DEFINITION:Switch-&-" + str(datetime.datetime.now()) + "\n")
         
+        if os.path.isfile("semantic_control_recent_loads.npy") :
+            self.recentLoadedFiles = np.load("semantic_control_recent_loads.npy").item()
+        else :
+            self.recentLoadedFiles = {'raw_sequences':[], 'synthesised_sequences':[]}
+        
         self.createGUI()
         
         self.showLoading(False)
@@ -356,6 +361,28 @@ class Window(QtGui.QMainWindow):
     def showHelpDialog(self) :
         showHelp(self)
         
+    def loadRawSequencePressed(self, triggeredAction) :
+        if triggeredAction.iconText() == "Find Location on Disk" :
+            newLocation = self.semanticsDefinitionTab.loadFrameSequencePressed()
+            if newLocation != "" :
+                if len(self.recentLoadedFiles['raw_sequences']) > 9 :
+                    del self.recentLoadedFiles['raw_sequences'][9]
+                self.recentLoadedFiles['raw_sequences'].insert(0, newLocation)
+                np.save("semantic_control_recent_loads.npy", self.recentLoadedFiles)
+        else :
+            self.semanticsDefinitionTab.loadFrameSequence(triggeredAction.iconText())
+        
+    def loadSynthesisedSequencePressed(self, triggeredAction) :
+        if triggeredAction.iconText() == "Find Location on Disk" :
+            newLocation = self.semanticLoopingTab.loadSynthesisedSequence()
+            if newLocation != "" :
+                if len(self.recentLoadedFiles['synthesised_sequences']) > 9 :
+                    del self.recentLoadedFiles['synthesised_sequences'][9]
+                self.recentLoadedFiles['synthesised_sequences'].insert(0, newLocation)
+                np.save("semantic_control_recent_loads.npy", self.recentLoadedFiles)
+        else :
+            self.semanticLoopingTab.loadSynthesisedSequenceAtLocation(triggeredAction.iconText())
+        
     def createGUI(self) :
         
         ## WIDGETS ##
@@ -383,12 +410,13 @@ class Window(QtGui.QMainWindow):
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/digger", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/toy", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/elevators", self)#dataPath+dataSet)
+#         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/candle_wind", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/home/ilisescu/PhD/data/street", self)#dataPath+dataSet)
-        self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/wave1", self)#dataPath+dataSet)
+#         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/wave1", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/home/ilisescu/PhD/data/tutorial_sequence/", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/flowers/", self)#dataPath+dataSet)
 #         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("/media/ilisescu/Data1/PhD/data/plane_dep/", self)#dataPath+dataSet)
-#         self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("", self)#dataPath+dataSet)
+        self.semanticsDefinitionTab = sdt.SemanticsDefinitionTab("", self)#dataPath+dataSet)
         
 #         self.semanticLoopingTab = SemanticLoopingTab(100, dataPath+"synthesisedSequences/waveFull/synthesised_sequence.npy", self)
 #         self.semanticLoopingTab = SemanticLoopingTab(100, dataPath+"synthesisedSequences/waveFullBusier/synthesised_sequence.npy", self)
@@ -454,11 +482,44 @@ class Window(QtGui.QMainWindow):
         self.setCentralWidget(self.tabWidget)
         
         ## MENU ACTIONS ##
+#         loadRawFrameSequenceAction = QtGui.QAction("Load &Raw Frame Sequence", self)
+#         loadRawFrameSequenceAction.triggered.connect(self.loadRawSequencePressed)
+        loadRawFrameSequenceMenu = QtGui.QMenu("Load &Raw Frame Sequence", self)
+        loadRawFrameSequenceMenu.triggered.connect(self.loadRawSequencePressed)
+        loadRawFrameSequenceMenu.addAction("Find Location on Disk")
+        loadRawFrameSequenceMenu.addSeparator()
+        for location in self.recentLoadedFiles['raw_sequences'] :
+            loadRawFrameSequenceMenu.addAction(location)
+        
+        synthesiseNewSequenceAction = QtGui.QAction("Synthesise &New Sequence", self)
+        synthesiseNewSequenceAction.triggered.connect(self.semanticLoopingTab.newSynthesisedSequence)
+        loadSynthesisedSequenceMenu = QtGui.QMenu("Load &Synthesised Sequence", self)
+        loadSynthesisedSequenceMenu.triggered.connect(self.loadSynthesisedSequencePressed)
+        loadSynthesisedSequenceMenu.addAction("Find Location on Disk")
+        loadSynthesisedSequenceMenu.addSeparator()
+        for location in self.recentLoadedFiles['synthesised_sequences'] :
+            loadSynthesisedSequenceMenu.addAction(location)
+        
+        
+        loadInputSequenceAction = QtGui.QAction("Load &Input Sequence", self)
+        loadInputSequenceAction.triggered.connect(self.semanticLoopingTab.loadSemanticSequence)
+        setBackgroundImageAction = QtGui.QAction("Set &Background Image", self)
+        setBackgroundImageAction.triggered.connect(self.semanticLoopingTab.setBgImage)
+        
         helpAction = QtGui.QAction("&Help", self)
         helpAction.setShortcut('Ctrl+H')
         helpAction.triggered.connect(self.showHelpDialog)
     
         ## MENU BAR ##
+        fileMenu = self.menuBar().addMenu("&File")
+        fileMenu.addMenu(loadRawFrameSequenceMenu)
+        fileMenu.addSeparator()
+        fileMenu.addAction(synthesiseNewSequenceAction)
+        fileMenu.addMenu(loadSynthesisedSequenceMenu)
+        fileMenu.addAction(loadInputSequenceAction)
+        fileMenu.addAction(setBackgroundImageAction)
+        
+        
         aboutMenu = self.menuBar().addMenu("&About")
         aboutMenu.addAction(helpAction)
         
@@ -480,10 +541,28 @@ app.exec_()
 
 # <codecell>
 
-# tmp = np.load("/home/ilisescu/PhD/data/synthesisedSequences/wave_user_study_task/synthesised_sequence.npy").item()
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/toy/semantic_sequence-toy1.npy").item()
+# print tmp.keys()
+# del tmp[DICT_]
+# tmp[DICT_TRANSITION_COSTS_LOCATION] = "/media/ilisescu/Data1/PhD/data/toy/transition_costs_no_normalization_toy1.npy"
+# np.save(tmp[DICT_SEQUENCE_LOCATION], tmp)
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/candle_wind/semantic_sequence-candle_wind1.npy").item()
+# del tmp[DICT_BBOXES]
+# del tmp[DICT_BBOX_CENTERS]
+# del tmp[DICT_BBOX_ROTATIONS]
+# del tmp[DICT_FOOTPRINTS]
+# del tmp[DICT_MASK_LOCATION]
+# del tmp[DICT_PATCHES_LOCATION]
+# tmp[DICT_PATCHES_LOCATION] = "/media/ilisescu/Data1/PhD/data/candle_wind/preloaded_patches-candle_wind1.npy"
+# del tmp[DICT_FRAME_SEMANTICS]
+# tmp[DICT_DISTANCE_MATRIX_LOCATION] = "/media/ilisescu/Data1/PhD/data/candle_wind/candle_wind1-vanilla_distMat.npy"
+# print tmp.keys()
 # del tmp[DICT_USED_SEQUENCES][1]
 # print tmp[DICT_USED_SEQUENCES]
-# np.save("/home/ilisescu/PhD/data/synthesisedSequences/wave_user_study_task/synthesised_sequence.npy", tmp)
+# np.save(tmp[DICT_SEQUENCE_LOCATION], tmp)
 
 # <codecell>
 
@@ -689,202 +768,202 @@ app.exec_()
 
 # <codecell>
 
-# logLocation = np.sort(glob.glob("logFiles/log-*"))[-1]
-# logLocation = "/media/ilisescu/UUI/Semantic Control/logFiles/log-2016-04-05 14_06_44.540685"
-logLocation = "/home/ilisescu/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/aron/task_log"
+# # logLocation = np.sort(glob.glob("logFiles/log-*"))[-1]
+# # logLocation = "/media/ilisescu/UUI/Semantic Control/logFiles/log-2016-04-05 14_06_44.540685"
+# logLocation = "/home/ilisescu/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/aron/task_log"
 
-with open(logLocation) as f :
-    allLines = f.readlines()
+# with open(logLocation) as f :
+#     allLines = f.readlines()
     
-    timeSpentInTabs = [[], []]
-    listOfSpritesInDefinition = {}
-    isDoingTracking = True
-    currentSprite = ""
+#     timeSpentInTabs = [[], []]
+#     listOfSpritesInDefinition = {}
+#     isDoingTracking = True
+#     currentSprite = ""
     
-    for line in allLines :
-        if "\n" in line :
-            line = line[:-2]
+#     for line in allLines :
+#         if "\n" in line :
+#             line = line[:-2]
             
-        action, timestamp = line.split("-&-")
-        timeOfAction = np.array(timestamp.split(" ")[-1].split(":"), float)
-        print action, timestamp.split(" ")[-1]
-        if "DEFINITION:Switch" in action :
-            isDefinitionTab = True
-            timeSpentInTabs[0].append([timeOfAction, timeOfAction])
+#         action, timestamp = line.split("-&-")
+#         timeOfAction = np.array(timestamp.split(" ")[-1].split(":"), float)
+#         print action, timestamp.split(" ")[-1]
+#         if "DEFINITION:Switch" in action :
+#             isDefinitionTab = True
+#             timeSpentInTabs[0].append([timeOfAction, timeOfAction])
             
-            if len(timeSpentInTabs[1]) > 0 :
-                timeSpentInTabs[1][-1][-1] = timeOfAction
+#             if len(timeSpentInTabs[1]) > 0 :
+#                 timeSpentInTabs[1][-1][-1] = timeOfAction
                 
-            if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
-                if isDoingTracking :
-                    listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
-                else :
-                    listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
+#             if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
+#                 if isDoingTracking :
+#                     listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
+#                 else :
+#                     listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
                 
-        elif "LOOPING:Switch" in action :
-            isDefinitionTab = False
-            timeSpentInTabs[1].append([timeOfAction, timeOfAction])
+#         elif "LOOPING:Switch" in action :
+#             isDefinitionTab = False
+#             timeSpentInTabs[1].append([timeOfAction, timeOfAction])
             
-            if len(timeSpentInTabs[0]) > 0 :
-                timeSpentInTabs[0][-1][-1] = timeOfAction
+#             if len(timeSpentInTabs[0]) > 0 :
+#                 timeSpentInTabs[0][-1][-1] = timeOfAction
                 
-            if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
-                if isDoingTracking :
-                    listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
-                else :
-                    listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
+#             if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
+#                 if isDoingTracking :
+#                     listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
+#                 else :
+#                     listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
                 
             
-        if isDefinitionTab :
-            if "Selecting" in action :
-                if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
-                    if isDoingTracking :
-                        listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
-                    else :
-                        listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
+#         if isDefinitionTab :
+#             if "Selecting" in action :
+#                 if currentSprite != "" and currentSprite in listOfSpritesInDefinition.keys() :
+#                     if isDoingTracking :
+#                         listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
+#                     else :
+#                         listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
                         
-                currentSprite = action.split(":")[-1].split(" ")[-1]
+#                 currentSprite = action.split(":")[-1].split(" ")[-1]
                 
-            if currentSprite != "" :
-                if currentSprite not in listOfSpritesInDefinition :
-                    listOfSpritesInDefinition[currentSprite] = {}
+#             if currentSprite != "" :
+#                 if currentSprite not in listOfSpritesInDefinition :
+#                     listOfSpritesInDefinition[currentSprite] = {}
                 
-                if "Selecting" in action :
-                    if isDoingTracking :
-                        if "tracking" not in listOfSpritesInDefinition[currentSprite] :
-                            listOfSpritesInDefinition[currentSprite]["tracking"] = []
+#                 if "Selecting" in action :
+#                     if isDoingTracking :
+#                         if "tracking" not in listOfSpritesInDefinition[currentSprite] :
+#                             listOfSpritesInDefinition[currentSprite]["tracking"] = []
                             
-                        listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
-                    else :
-                        if "segmenting" not in listOfSpritesInDefinition[currentSprite] :
-                            listOfSpritesInDefinition[currentSprite]["segmenting"] = []
+#                         listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
+#                     else :
+#                         if "segmenting" not in listOfSpritesInDefinition[currentSprite] :
+#                             listOfSpritesInDefinition[currentSprite]["segmenting"] = []
                             
-                        listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
+#                         listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
                         
-                if "Start Segmenting" in action :
-                    if "tracking" in listOfSpritesInDefinition[currentSprite].keys() :
-                        listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
-                    isDoingTracking = False
+#                 if "Start Segmenting" in action :
+#                     if "tracking" in listOfSpritesInDefinition[currentSprite].keys() :
+#                         listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
+#                     isDoingTracking = False
                     
-                    if "segmenting" not in listOfSpritesInDefinition[currentSprite] :
-                        listOfSpritesInDefinition[currentSprite]["segmenting"] = []
+#                     if "segmenting" not in listOfSpritesInDefinition[currentSprite] :
+#                         listOfSpritesInDefinition[currentSprite]["segmenting"] = []
                             
-                    listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
+#                     listOfSpritesInDefinition[currentSprite]["segmenting"].append([timeOfAction, timeOfAction])
                     
-                if "Start Tracking" in action :
-                    if "segmenting" in listOfSpritesInDefinition[currentSprite].keys() :
-                        listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
-                    isDoingTracking = False
+#                 if "Start Tracking" in action :
+#                     if "segmenting" in listOfSpritesInDefinition[currentSprite].keys() :
+#                         listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
+#                     isDoingTracking = False
                     
-                    if "tracking" not in listOfSpritesInDefinition[currentSprite] :
-                        listOfSpritesInDefinition[currentSprite]["tracking"] = []
+#                     if "tracking" not in listOfSpritesInDefinition[currentSprite] :
+#                         listOfSpritesInDefinition[currentSprite]["tracking"] = []
                     
-                    listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
+#                     listOfSpritesInDefinition[currentSprite]["tracking"].append([timeOfAction, timeOfAction])
                 
-        else :
-            print "nothing to do"
+#         else :
+#             print "nothing to do"
             
-        if "Closing" in action :
-            if isDefinitionTab :
-                if currentSprite != "" :
-                    if isDoingTracking :
-                        listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
-                    else :
-                        listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
+#         if "Closing" in action :
+#             if isDefinitionTab :
+#                 if currentSprite != "" :
+#                     if isDoingTracking :
+#                         listOfSpritesInDefinition[currentSprite]["tracking"][-1][-1] = timeOfAction
+#                     else :
+#                         listOfSpritesInDefinition[currentSprite]["segmenting"][-1][-1] = timeOfAction
                 
-                if len(timeSpentInTabs[0]) > 0 :
-                    timeSpentInTabs[0][-1][-1] = timeOfAction
-            else :
-                if len(timeSpentInTabs[1]) > 0 :
-                    timeSpentInTabs[1][-1][-1] = timeOfAction
+#                 if len(timeSpentInTabs[0]) > 0 :
+#                     timeSpentInTabs[0][-1][-1] = timeOfAction
+#             else :
+#                 if len(timeSpentInTabs[1]) > 0 :
+#                     timeSpentInTabs[1][-1][-1] = timeOfAction
         
             
-print
-print "---------------------- STATISTICS ----------------------"
-for spriteKey in listOfSpritesInDefinition.keys() :
-    print "SPRITE:", spriteKey
-    if "tracking" in listOfSpritesInDefinition[spriteKey].keys() :
-        totalTime = np.zeros(3)
-        for instance in listOfSpritesInDefinition[spriteKey]["tracking"] :
-            tmp = instance[1]-instance[0]
-            if tmp[1] < 0.0 :
-                tmp[1] += 60.0
-                tmp[0] -= 1.0
-            if tmp[2] < 0.0 :
-                tmp[2] += 60.0
-                tmp[1] -= 1.0
-            totalTime += tmp
-            if totalTime[1] >= 60.0 :
-                totalTime[1] -= 60.0
-                totalTime[0] += 1.0
-            if totalTime[2] >= 60.0 :
-                totalTime[2] -= 60.0
-                totalTime[1] += 1.0
-#             print instance#, instance[1]-instance[0], tmp
-        print "TRACKING TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
-    else :
-        print "NO TRACKING"
+# print
+# print "---------------------- STATISTICS ----------------------"
+# for spriteKey in listOfSpritesInDefinition.keys() :
+#     print "SPRITE:", spriteKey
+#     if "tracking" in listOfSpritesInDefinition[spriteKey].keys() :
+#         totalTime = np.zeros(3)
+#         for instance in listOfSpritesInDefinition[spriteKey]["tracking"] :
+#             tmp = instance[1]-instance[0]
+#             if tmp[1] < 0.0 :
+#                 tmp[1] += 60.0
+#                 tmp[0] -= 1.0
+#             if tmp[2] < 0.0 :
+#                 tmp[2] += 60.0
+#                 tmp[1] -= 1.0
+#             totalTime += tmp
+#             if totalTime[1] >= 60.0 :
+#                 totalTime[1] -= 60.0
+#                 totalTime[0] += 1.0
+#             if totalTime[2] >= 60.0 :
+#                 totalTime[2] -= 60.0
+#                 totalTime[1] += 1.0
+# #             print instance#, instance[1]-instance[0], tmp
+#         print "TRACKING TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
+#     else :
+#         print "NO TRACKING"
         
-    if "segmenting" in listOfSpritesInDefinition[spriteKey].keys() :
-        totalTime = np.zeros(3)
-        for instance in listOfSpritesInDefinition[spriteKey]["segmenting"] :
-            tmp = instance[1]-instance[0]
-            if tmp[1] < 0.0 :
-                tmp[1] += 60.0
-                tmp[0] -= 1.0
-            if tmp[2] < 0.0 :
-                tmp[2] += 60.0
-                tmp[1] -= 1.0
-            totalTime += tmp
-            if totalTime[1] >= 60.0 :
-                totalTime[1] -= 60.0
-                totalTime[0] += 1.0
-            if totalTime[2] >= 60.0 :
-                totalTime[2] -= 60.0
-                totalTime[1] += 1.0
-#             print instance#, instance[1]-instance[0], tmp
-        print "SEGMENTATION TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
-    else :
-        print "NO SEGMENTATION"
-    print
+#     if "segmenting" in listOfSpritesInDefinition[spriteKey].keys() :
+#         totalTime = np.zeros(3)
+#         for instance in listOfSpritesInDefinition[spriteKey]["segmenting"] :
+#             tmp = instance[1]-instance[0]
+#             if tmp[1] < 0.0 :
+#                 tmp[1] += 60.0
+#                 tmp[0] -= 1.0
+#             if tmp[2] < 0.0 :
+#                 tmp[2] += 60.0
+#                 tmp[1] -= 1.0
+#             totalTime += tmp
+#             if totalTime[1] >= 60.0 :
+#                 totalTime[1] -= 60.0
+#                 totalTime[0] += 1.0
+#             if totalTime[2] >= 60.0 :
+#                 totalTime[2] -= 60.0
+#                 totalTime[1] += 1.0
+# #             print instance#, instance[1]-instance[0], tmp
+#         print "SEGMENTATION TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
+#     else :
+#         print "NO SEGMENTATION"
+#     print
         
-totalTime = np.zeros(3)
-for instance in timeSpentInTabs[0] :
-    tmp = instance[1]-instance[0]
-    if tmp[1] < 0.0 :
-        tmp[1] += 60.0
-        tmp[0] -= 1.0
-    if tmp[2] < 0.0 :
-        tmp[2] += 60.0
-        tmp[1] -= 1.0
-    totalTime += tmp
-    if totalTime[1] >= 60.0 :
-        totalTime[1] -= 60.0
-        totalTime[0] += 1.0
-    if totalTime[2] >= 60.0 :
-        totalTime[2] -= 60.0
-        totalTime[1] += 1.0
-#     print instance#, instance[1]-instance[0], tmp
-print "TOTAL DEFINITION TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
+# totalTime = np.zeros(3)
+# for instance in timeSpentInTabs[0] :
+#     tmp = instance[1]-instance[0]
+#     if tmp[1] < 0.0 :
+#         tmp[1] += 60.0
+#         tmp[0] -= 1.0
+#     if tmp[2] < 0.0 :
+#         tmp[2] += 60.0
+#         tmp[1] -= 1.0
+#     totalTime += tmp
+#     if totalTime[1] >= 60.0 :
+#         totalTime[1] -= 60.0
+#         totalTime[0] += 1.0
+#     if totalTime[2] >= 60.0 :
+#         totalTime[2] -= 60.0
+#         totalTime[1] += 1.0
+# #     print instance#, instance[1]-instance[0], tmp
+# print "TOTAL DEFINITION TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
 
-totalTime = np.zeros(3)
-for instance in timeSpentInTabs[1] :
-    tmp = instance[1]-instance[0]
-    if tmp[1] < 0.0 :
-        tmp[1] += 60.0
-        tmp[0] -= 1.0
-    elif tmp[1] >= 60.0 :
-        tmp[1] -= 60.0
-        tmp[0] += 1.0
-    if tmp[2] < 0.0 :
-        tmp[2] += 60.0
-        tmp[1] -= 1.0
-    elif tmp[2] >= 60.0 :
-        tmp[2] -= 60.0
-        tmp[1] += 1.0
-    totalTime += tmp
-#     print instance#, instance[1]-instance[0], tmp
-print "TOTAL LOOPING TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
+# totalTime = np.zeros(3)
+# for instance in timeSpentInTabs[1] :
+#     tmp = instance[1]-instance[0]
+#     if tmp[1] < 0.0 :
+#         tmp[1] += 60.0
+#         tmp[0] -= 1.0
+#     elif tmp[1] >= 60.0 :
+#         tmp[1] -= 60.0
+#         tmp[0] += 1.0
+#     if tmp[2] < 0.0 :
+#         tmp[2] += 60.0
+#         tmp[1] -= 1.0
+#     elif tmp[2] >= 60.0 :
+#         tmp[2] -= 60.0
+#         tmp[1] += 1.0
+#     totalTime += tmp
+# #     print instance#, instance[1]-instance[0], tmp
+# print "TOTAL LOOPING TIME: {0} hours, {1} minutes, {2} seconds".format(totalTime[0], totalTime[1], totalTime[2])
 
 # <codecell>
 
