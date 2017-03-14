@@ -62,7 +62,7 @@ for frame in framePaths[105:106] :
         
     if doLevels :
         ## uses logistic function to adjust levels
-        alphaMatte *= 1/(1+exp(-logisticK*(np.array(alphaMatte, dtype=float)-midPoint)))
+        alphaMatte = alphaMatte.astype(float)/(1+exp(-logisticK*(np.array(alphaMatte, dtype=float)-midPoint)))
         alphaMatte = np.array(alphaMatte, dtype=int)
     
     figure(); imshow(alphaMatte[:, :, 0])
@@ -176,7 +176,7 @@ class Window(QtGui.QWidget):
 
         if self.doLevelsBox.isChecked() :
             ## uses logistic function to adjust levels
-            alphaMatte *= 1/(1+exp(-self.levelsSteepnessSpinBox.value()*(np.array(alphaMatte, dtype=float)-self.levelsMidpointSpinBox.value())))
+            alphaMatte = alphaMatte.astype(float)/(1+exp(-self.levelsSteepnessSpinBox.value()*(np.array(alphaMatte, dtype=float)-self.levelsMidpointSpinBox.value())))
         
         alphaMatte = np.array(alphaMatte, dtype=uint8)
         

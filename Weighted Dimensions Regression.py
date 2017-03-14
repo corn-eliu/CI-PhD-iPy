@@ -169,8 +169,8 @@ dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "splashes_water/"
 # dataSet = "small_waterfall/"
 # dataSet = "sisi_flag/"
-dataSet = "eu_flag_ph_left/"
-# dataSet = "ribbon2/"
+# dataSet = "eu_flag_ph_left/"
+dataSet = "ribbon2/"
 # dataSet = "candle1/segmentedAndCropped/"
 framePaths = np.sort(glob.glob(dataPath + dataSet + "frame*.png"))
 numFrames = len(framePaths)
@@ -1029,6 +1029,56 @@ figure(); plot(sio.loadmat(phiSaveLoc)['phi_MAP'])
 # bob = np.zeros(imageSize)
 # bob[frame2Idxs[:, 0], frame2Idxs[:, 1]] = sio.loadmat(phiSaveLoc)['phi_MAP'][:, 0]
 # gwv.showCustomGraph(bob)
+
+# <codecell>
+
+## for the ribbon data make X and w based on appearanceLabelledPairs which were manually labelled from randomlu chosen examples (they should be same examples I used for the regressor distance)
+resizeRatio = 1.0/downsize
+# imagesGrayData = np.zeros([weights.shape[0], numFrames])
+# for i in xrange(numFrames) :
+#     imagesGrayData[:, i] = np.ndarray.flatten(np.array(cv2.cvtColor(cv2.resize(cv2.imread(framePaths[i]), (0, 0), fx=resizeRatio, fy=resizeRatio, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)))/255.0
+print imagesGrayData.shape
+
+labelledPairs = np.load("appearanceLabelledPairs.npy")
+print labelledPairs.shape
+goodPairsIdxs = labelledPairs[np.argwhere(labelledPairs[:, -1] == 0).flatten(), :-1].astype(int).T
+badPairsIdxs = labelledPairs[np.argwhere(labelledPairs[:, -1] == 1).flatten(), :-1].astype(int).T
+print goodPairsIdxs.shape
+print badPairsIdxs.shape
+goodExamplesData = (imagesGrayData[:, goodPairsIdxs[0, :]]-imagesGrayData[:, goodPairsIdxs[1, :]]).astype(np.float32)**np.float32(2)
+badExamplesData = (imagesGrayData[:, badPairsIdxs[0, :]]-imagesGrayData[:, badPairsIdxs[1, :]]).astype(np.float32)**np.float32(2)
+X = np.concatenate((goodExamplesData, badExamplesData), axis=1)
+w = np.concatenate((np.zeros(len(goodPairsIdxs.T)), 10.0*np.ones(len(badPairsIdxs.T)))).reshape((X.shape[-1], 1))
+print X.shape, w.shape
+N = X.shape[0]
+phi0 = np.ones((N, 1))
+    
+sio.savemat(dataPath + dataSet + "trainingExamplesForImageData", {"X":X, "w":w})
+
+# <codecell>
+
+weights = sio.loadmat(phiSaveLoc)['phi_MAP']
+# X = sio.loadmat(trainingExamplesLoc)['X']
+# w = sio.loadmat(trainingExamplesLoc)['w']
+downsize = 2
+newShape = (720/downsize, 1280/downsize)
+figure(); imshow(np.log(weights.reshape(newShape, order='C')))
+
+# <codecell>
+
+## now compute distance for ribbon using the weights loaded above
+distMat = np.zeros([numFrames, numFrames])
+for i in xrange(numFrames) :
+    distMat[i, :] = np.sqrt(np.dot(((imagesGrayData[:, i:i+1]-imagesGrayData)**2.0).T, weights)).flatten()
+    print i,
+
+# <codecell>
+
+# gwv.showCustomGraph(distMat)
+# np.save("/media/ilisescu/Data1/PhD/data/ribbon2/linear_regression_distMat.npy", distMat)
+# gwv.showCustomGraph(((imagesGrayData[:, i:i+1]-imagesGrayData[:, 400:400+1])**2.0*weights).reshape(newShape))
+# print np.sum((imagesGrayData[:, i:i+1]-imagesGrayData[:, 400:400+1])**2.0*weights)
+# print np.dot(((imagesGrayData[:, i:i+1]-imagesGrayData[:, 400:400+1])**2.0).T, weights)
 
 # <codecell>
 

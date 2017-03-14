@@ -20,8 +20,11 @@ import matplotlib as mpl
 
 from PIL import Image
 from PySide import QtCore, QtGui
+from PySide.phonon import Phonon
+import pyglet
 
 import VideoTexturesUtils as vtu
+from SemanticsDefinitionTabGUI import computeTransitionMatrix
 
 DICT_SEQUENCE_NAME = 'semantic_sequence_name'
 DICT_BBOXES = 'bboxes'
@@ -42,6 +45,7 @@ DICT_REPRESENTATIVE_COLOR = 'representative_color'
 DICT_OFFSET = "instance_offset"
 DICT_SCALE = "instance_scale"
 DICT_FRAME_SEMANTICS = "semantics_per_frame"
+DICT_SEMANTICS_NAMES = "semantics_names"
 DICT_NUM_SEMANTICS = "number_of_semantic_classes"
 DICT_USED_SEQUENCES = "used_semantic_sequences"
 DICT_SEQUENCE_INSTANCES = "sequence_instances"
@@ -55,6 +59,10 @@ DICT_NUM_EXTRA_FRAMES = 'num_extra_frames' ## same len as DICT_LABELLED_FRAMES
 DICT_CONFLICTING_SEQUENCES = 'conflicting_sequences'
 DICT_COMPATIBLE_SEQUENCES = 'compatible_sequences'
 DICT_DISTANCE_MATRIX_LOCATION = 'sequence_precomputed_distance_matrix_location' ## for label propagation
+DICT_COMMAND_TYPE = "issue_command_type"
+DICT_COMMAND_TYPE_KEY = 0
+DICT_COMMAND_TYPE_COLOR = 1
+DICT_COMMAND_BINDING = "issue_command_binding"
 
 GRAPH_MAX_COST = 10000000.0
 
@@ -72,6 +80,55 @@ SLIDER_NOT_SELECTED_HEIGHT = 9
 SLIDER_PADDING = 1
 SLIDER_INDICATOR_WIDTH = 4
 SLIDER_MIN_HEIGHT = 42
+
+preloadedImages = {}
+sequence = np.load("/media/ilisescu/Data1/PhD/data/toy/semantic_sequence-toy1.npy").item()
+for frameKey in sequence[DICT_FRAMES_LOCATIONS].keys() :
+    preloadedImages[frameKey] = np.array(Image.open(sequence[DICT_FRAMES_LOCATIONS][frameKey]), np.uint8)
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_new/synthesised_sequence.npy").item()
+# maxFrames = 0
+# for instance in tmp[DICT_SEQUENCE_INSTANCES] :
+#     maxFrames = np.max(len(instance[DICT_DESIRED_SEMANTICS]))
+    
+# for frameIdx in xrange(maxFrames) :
+#     print frameIdx, 
+#     for instanceIdx in [1, 0, 2] :
+#         instance = tmp[DICT_SEQUENCE_INSTANCES][instanceIdx]
+#         print instance[DICT_DESIRED_SEMANTICS][frameIdx, 1:],
+#     print
+
+# <codecell>
+
+# classColors = np.array([[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]])
+# print np.sqrt(np.sum((np.array([0.0, 0.0, 1.0, 1.0]) - classColors)**2, axis=1))
+
+# <codecell>
+
+# tmp =  np.load("/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_interlaced/synthesised_sequence.npy").item()[DICT_SEQUENCE_INSTANCES][14][DICT_DESIRED_SEMANTICS]
+# for i in tmp :
+#     print i
+
+# <codecell>
+
+## adapt dict of copied synthesised sequence
+# seqLocation = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_interlaced/"
+# tmp = np.load(seqLocation+"synthesised_sequence.npy").item()
+# print tmp.keys()
+# tmp[DICT_SEQUENCE_BG] = seqLocation+"bgImage.png"
+# print tmp[DICT_SEQUENCE_BG]
+# np.save(seqLocation+"synthesised_sequence.npy", tmp)
+# print tmp[DICT_SEQUENCE_INSTANCES][9]
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/toy/semantic_sequence-toy1.npy").item()
+# print np.sort(tmp.keys())
+# del tmp[DICT_MASK_LOCATION]
+# print np.sort(tmp.keys())
+# np.save(tmp[DICT_SEQUENCE_LOCATION], tmp)
 
 # <codecell>
 
@@ -852,16 +909,16 @@ class ImageLabel(QtGui.QLabel) :
             
         painter.end()
         
-    def setPixmap(self, pixmap) :
-        if pixmap.width() > self.width() :
-            super(ImageLabel, self).setPixmap(pixmap.scaledToWidth(self.width()))
-        else :
-            super(ImageLabel, self).setPixmap(pixmap)
+#     def setPixmap(self, pixmap) :
+#         if pixmap.width() > self.width() :
+#             super(ImageLabel, self).setPixmap(pixmap.scaledToWidth(self.width()))
+#         else :
+#             super(ImageLabel, self).setPixmap(pixmap)
         
-    def resizeEvent(self, event) :
-        if np.any(self.pixmap() != None) :
-            if self.pixmap().width() > self.width() :
-                self.setPixmap(self.pixmap().scaledToWidth(self.width()))
+#     def resizeEvent(self, event) :
+#         if np.any(self.pixmap() != None) :
+#             if self.pixmap().width() > self.width() :
+#                 self.setPixmap(self.pixmap().scaledToWidth(self.width()))
 
 # <codecell>
 
@@ -938,22 +995,33 @@ class InfoDialog(QtGui.QDialog):
     def __init__(self, parent=None, title=""):
         super(InfoDialog, self).__init__(parent)
         
+        self.cursorPosition = np.zeros(2)
+        self.MAX_VIS_IMAGE_HEIGHT = 200
+        self.CURSOR_SIZE = 4 ## actual size is x2
+        self.cursorPositionOverlay = QtGui.QImage(QtCore.QSize(100, 100), QtGui.QImage.Format_ARGB32)
+        
         self.createGUI()
         
-        self.MAX_VIS_IMAGE_HEIGHT = 200
-        
         self.setWindowTitle(title)
+        
+        
+#     def setInfoImage(self, infoImage) :
+#         self.infoImage = infoImage
+#         updateInfoImage(self.infoImage)
         
     def setInfoImage(self, infoImage) :
         self.imageLabel.setPixmap(QtGui.QPixmap.fromImage(infoImage))
         self.setMaximumSize(infoImage.width(), infoImage.height())
+        self.cursorPositionOverlay = self.cursorPositionOverlay.scaled(infoImage.size())
+        self.imageLabel.setOverlay(self.cursorPositionOverlay)
         self.update()
         
-        maxHeight = QtGui.QApplication.desktop().screenGeometry().height()-100-22*3
-        if infoImage.height() < maxHeight - self.MAX_VIS_IMAGE_HEIGHT :
-            self.mainLayout.setDirection(QtGui.QBoxLayout.TopToBottom)
-        else :
-            self.mainLayout.setDirection(QtGui.QBoxLayout.LeftToRight)
+        if False :
+            maxHeight = QtGui.QApplication.desktop().screenGeometry().height()-100-22*3
+            if infoImage.height() < maxHeight - self.MAX_VIS_IMAGE_HEIGHT :
+                self.mainLayout.setDirection(QtGui.QBoxLayout.TopToBottom)
+            else :
+                self.mainLayout.setDirection(QtGui.QBoxLayout.LeftToRight)
 
     def setVisImage(self, visImage) :
         self.visLabel.setPixmap(QtGui.QPixmap.fromImage(visImage.scaledToHeight(self.MAX_VIS_IMAGE_HEIGHT)))
@@ -966,12 +1034,28 @@ class InfoDialog(QtGui.QDialog):
             
     def setText(self, text) :
         self.infoLabel.setText(text)
+        
+    def setCursorPosition(self, cursorPosition) :
+        self.cursorPosition = cursorPosition
+        self.cursorPositionOverlay.fill(QtGui.QColor.fromRgb(0, 0, 0, 0))
+        painter = QtGui.QPainter(self.cursorPositionOverlay)
+        painter.setRenderHints(QtGui.QPainter.Antialiasing)
+        
+        ## draw cursor
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(0, 0, 0, 255), 3, QtCore.Qt.SolidLine, QtCore.Qt.FlatCap, QtCore.Qt.MiterJoin))
+        painter.drawEllipse(QtCore.QPointF(self.cursorPosition[0], self.cursorPosition[1]), self.CURSOR_SIZE, self.CURSOR_SIZE)
+        
+        painter.setPen(QtGui.QPen(QtGui.QColor.fromRgb(255, 255, 255, 255), 1, QtCore.Qt.SolidLine, QtCore.Qt.FlatCap, QtCore.Qt.MiterJoin))
+        painter.drawEllipse(QtCore.QPointF(self.cursorPosition[0], self.cursorPosition[1]), self.CURSOR_SIZE, self.CURSOR_SIZE)
+        
+        painter.end()
+        self.imageLabel.setOverlay(self.cursorPositionOverlay)
     
     def createGUI(self):
         
         self.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Maximum)
         
-        self.imageLabel = QtGui.QLabel()
+        self.imageLabel = ImageLabel("")
         self.imageLabel.setMouseTracking(True)
         self.imageLabel.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Maximum)
         
@@ -991,29 +1075,261 @@ class InfoDialog(QtGui.QDialog):
         
         ## LAYOUTS ##
         
-        vLayout = QtGui.QVBoxLayout()
-        vLayout.addWidget(self.imageLabel, QtCore.Qt.AlignCenter)
+#         vLayout = QtGui.QVBoxLayout()
+#         vLayout.addWidget(self.imageLabel, QtCore.Qt.AlignCenter)
         
+#         infoLabelHLayout = QtGui.QHBoxLayout()
+#         infoLabelHLayout.addStretch()
+#         infoLabelHLayout.addWidget(self.infoLabel, QtCore.Qt.AlignCenter)
+#         infoLabelHLayout.addStretch()
+#         vLayout.addLayout(infoLabelHLayout, QtCore.Qt.AlignCenter)
+#         saveButtonHLayout = QtGui.QHBoxLayout()
+#         saveButtonHLayout.addStretch()
+#         saveButtonHLayout.addWidget(self.saveButton, QtCore.Qt.AlignCenter)
+#         saveButtonHLayout.addStretch()
+#         vLayout.addLayout(saveButtonHLayout, QtCore.Qt.AlignCenter)
+        
+#         self.mainLayout = QtGui.QBoxLayout(QtGui.QBoxLayout.TopToBottom)
+#         self.mainLayout.addLayout(vLayout, QtCore.Qt.AlignCenter)
+#         visLabelHLayout = QtGui.QHBoxLayout()
+#         visLabelHLayout.addStretch()
+#         visLabelHLayout.addWidget(self.visLabel, QtCore.Qt.AlignCenter)
+#         visLabelHLayout.addStretch()
+#         self.mainLayout.addLayout(visLabelHLayout, QtCore.Qt.AlignCenter)
+
+        hLayout = QtGui.QHBoxLayout()
+        hLayout.addStretch()
+        hLayout.addWidget(self.imageLabel, QtCore.Qt.AlignCenter)
+        hLayout.addStretch()
+        hLayout.addWidget(self.visLabel, QtCore.Qt.AlignCenter)
+        hLayout.addStretch()
+
         infoLabelHLayout = QtGui.QHBoxLayout()
         infoLabelHLayout.addStretch()
         infoLabelHLayout.addWidget(self.infoLabel, QtCore.Qt.AlignCenter)
         infoLabelHLayout.addStretch()
-        vLayout.addLayout(infoLabelHLayout, QtCore.Qt.AlignCenter)
         saveButtonHLayout = QtGui.QHBoxLayout()
         saveButtonHLayout.addStretch()
         saveButtonHLayout.addWidget(self.saveButton, QtCore.Qt.AlignCenter)
         saveButtonHLayout.addStretch()
-        vLayout.addLayout(saveButtonHLayout, QtCore.Qt.AlignCenter)
         
         self.mainLayout = QtGui.QBoxLayout(QtGui.QBoxLayout.TopToBottom)
-        self.mainLayout.addLayout(vLayout, QtCore.Qt.AlignCenter)
-        visLabelHLayout = QtGui.QHBoxLayout()
-        visLabelHLayout.addStretch()
-        visLabelHLayout.addWidget(self.visLabel, QtCore.Qt.AlignCenter)
-        visLabelHLayout.addStretch()
-        self.mainLayout.addLayout(visLabelHLayout, QtCore.Qt.AlignCenter)
+        self.mainLayout.addLayout(hLayout, QtCore.Qt.AlignCenter)
+        self.mainLayout.addLayout(infoLabelHLayout, QtCore.Qt.AlignCenter)
+        self.mainLayout.addLayout(saveButtonHLayout, QtCore.Qt.AlignCenter)
+        
         
         self.setLayout(self.mainLayout)
+
+# <codecell>
+
+class IndexedComboBox(QtGui.QComboBox) :
+    currentIndexChangedSignal = QtCore.Signal(int, int, int)
+    
+    def __init__(self, rowIndex, colIndex, parent=None):
+        super(IndexedComboBox, self).__init__(parent)
+        self.rowIndex = rowIndex
+        self.colIndex = colIndex
+        
+        self.currentIndexChanged[int].connect(self.emitCurrentIndexChanged)
+        
+    def emitCurrentIndexChanged(self, index) :
+        self.currentIndexChangedSignal.emit(index, self.rowIndex, self.colIndex)
+        
+class IndexedPushButton(QtGui.QPushButton) :
+#     HERE KEEP TRACK OF THE BINDING FOR THIS BUTTON SO THAT THEN I CAN RETRIEVE IT WHEN THE DIALOG IS CLOSED USING THE OK BUTTON
+    clickedSignal = QtCore.Signal(int, int)
+    
+    def __init__(self, rowIndex, colIndex, commandType, commandBindings, text="", parent=None):
+        super(IndexedPushButton, self).__init__(text, parent)
+        self.rowIndex = rowIndex
+        self.colIndex = colIndex
+        self.commandBindings = commandBindings
+        self.setCommandBinding(commandType, commandBindings[commandType])
+        
+        self.clicked.connect(self.emitClicked)
+        
+#     HAVE A METHOD TO SET THE BINDING GIVEN THE TYPE OF COMMAND AND SET THE STYLE (FOR COLOR TYPE) AND TEXT (FOR KEY TYPE) IN THIS METHOD RATHER THAN IN showKey(Color)Button()
+    
+    def setCommandBinding(self, commandType, commandBinding) :
+        self.commandBindings[commandType] = commandBinding
+        self.commandType = commandType
+        
+        if self.commandType == DICT_COMMAND_TYPE_KEY :
+            self.setText("Bind Key [{0}]".format(QtGui.QKeySequence(self.commandBindings[commandType]).toString()))
+            self.setStyleSheet("")
+        elif self.commandType == DICT_COMMAND_TYPE_COLOR :
+            self.setText("Bind Color")
+            if np.median(self.commandBindings[commandType]) < 127 :
+                textColor = np.ones(3, int)*255
+            else :
+                textColor = np.zeros(3, int)
+            self.setStyleSheet("QPushButton {border: 1px solid black; background-color: rgb("+
+                               np.string_(self.commandBindings[commandType][0])+", "+np.string_(self.commandBindings[commandType][1])
+                               +", "+np.string_(self.commandBindings[commandType][2])+"); color: rgb("+
+                               np.string_(textColor[0])+", "+np.string_(textColor[1])
+                               +", "+np.string_(textColor[2])+");}")
+            
+    
+    def emitClicked(self) :
+        self.clickedSignal.emit(self.rowIndex, self.colIndex)
+    
+class KeyBindingDialog(QtGui.QDialog):
+    def __init__(self, parent=None, title=""):
+        super(KeyBindingDialog, self).__init__(parent)
+        self.setWindowTitle(title)
+        
+        self.keySequence = None
+        
+        self.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
+        
+        mainLayout = QtGui.QVBoxLayout()
+        label = QtGui.QLabel("Press a Key Combination")
+        label.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
+        label.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+        mainLayout.addWidget(label)
+        self.setLayout(mainLayout)
+        
+        
+    def keyPressEvent(self, e) :
+        if e.key() != QtCore.Qt.Key_Shift and e.key() != QtCore.Qt.Key_Control and e.key() != QtCore.Qt.Key_Alt and e.key() != QtCore.Qt.Key_AltGr and e.key() != QtCore.Qt.Key_Meta :
+            self.keySequence = e.key()
+            if e.modifiers() & QtCore.Qt.Modifier.SHIFT :
+                self.keySequence = QtCore.Qt.SHIFT + self.keySequence
+            if e.modifiers() & QtCore.Qt.Modifier.ALT :
+                self.keySequence = QtCore.Qt.ALT + self.keySequence
+            if e.modifiers() & QtCore.Qt.Modifier.CTRL :
+                self.keySequence = QtCore.Qt.CTRL + self.keySequence
+#             self.keySequence = QtGui.QKeySequence(self.keySequence).toString()
+            self.done(1)
+    
+class ActionsCommandBindingsDialog(QtGui.QDialog):
+    def __init__(self, parent=None, title="", semanticSequences=[]):
+        super(ActionsCommandBindingsDialog, self).__init__(parent)
+        
+        self.semanticSequences = semanticSequences
+        self.indexedButtonsList = []
+        
+        self.createGUI()
+        
+        self.setWindowTitle(title)
+        
+    def accept(self):
+        self.done(1)
+        
+        print "########################### ACCEPTING KEY BINDINGS ###########################"
+        
+        idx = 0
+        for semanticSequence in self.semanticSequences :
+            print "SEQUENCE", semanticSequence[DICT_SEQUENCE_NAME]
+            for actionKey in np.sort(semanticSequence[DICT_SEMANTICS_NAMES].keys()) :
+                print "\t ACTION", semanticSequence[DICT_SEMANTICS_NAMES][actionKey],
+                if self.indexedButtonsList[idx].commandType == DICT_COMMAND_TYPE_COLOR :
+                    print "COLOR COMMAND", self.indexedButtonsList[idx].commandBindings[DICT_COMMAND_TYPE_COLOR]
+                    semanticSequence[DICT_COMMAND_TYPE][actionKey] = DICT_COMMAND_TYPE_COLOR
+                    semanticSequence[DICT_COMMAND_BINDING][actionKey] = np.array(self.indexedButtonsList[idx].commandBindings[DICT_COMMAND_TYPE_COLOR])
+                elif self.indexedButtonsList[idx].commandType == DICT_COMMAND_TYPE_KEY :
+                    print "KEY COMMAND", QtGui.QKeySequence(self.indexedButtonsList[idx].commandBindings[DICT_COMMAND_TYPE_KEY]).toString()
+                    semanticSequence[DICT_COMMAND_TYPE][actionKey] = DICT_COMMAND_TYPE_KEY
+                    semanticSequence[DICT_COMMAND_BINDING][actionKey] = self.indexedButtonsList[idx].commandBindings[DICT_COMMAND_TYPE_KEY]
+                
+                idx += 1
+            np.save(semanticSequence[DICT_SEQUENCE_LOCATION], semanticSequence)
+            
+        print "##############################################################################"
+    
+    def reject(self):
+        self.done(0)
+            
+    def setCommandBinding(self, rowIndex, colIndex) :
+        if self.indexedButtonsList[rowIndex].commandType == DICT_COMMAND_TYPE_COLOR :
+            print "BIND COLOR", rowIndex, colIndex
+            newColor = QtGui.QColorDialog.getColor(QtGui.QColor(self.indexedButtonsList[rowIndex].commandBindings[DICT_COMMAND_TYPE_COLOR][0],
+                                                                self.indexedButtonsList[rowIndex].commandBindings[DICT_COMMAND_TYPE_COLOR][1],
+                                                                self.indexedButtonsList[rowIndex].commandBindings[DICT_COMMAND_TYPE_COLOR][2]), self, "Choose Sequence Color")
+            if newColor.isValid() :
+                self.indexedButtonsList[rowIndex].setCommandBinding(DICT_COMMAND_TYPE_COLOR, np.array([newColor.red(), newColor.green(), newColor.blue()]))
+                
+        elif self.indexedButtonsList[rowIndex].commandType == DICT_COMMAND_TYPE_KEY :
+            print "BIND KEY", rowIndex, colIndex
+        
+            keyBindingDialog = KeyBindingDialog(self, "Key Binding")
+            exitCode = keyBindingDialog.exec_()
+            
+            if exitCode == 1 and keyBindingDialog.keySequence !=  None :
+                self.indexedButtonsList[rowIndex].setCommandBinding(DICT_COMMAND_TYPE_KEY, keyBindingDialog.keySequence)
+        
+    def changeCommandType(self, index, rowIndex, colIndex) :
+        print "COMMAND TYPE", index, rowIndex, colIndex
+        self.indexedButtonsList[rowIndex].setCommandBinding(index, self.indexedButtonsList[rowIndex].commandBindings[index])
+    
+    def createGUI(self):
+        self.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.MinimumExpanding)
+        
+        self.semanticSequencesTable = QtGui.QTableWidget()
+        self.semanticSequencesTable.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+        self.semanticSequencesTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+        self.semanticSequencesTable.setSelectionMode(QtGui.QAbstractItemView.NoSelection)
+        self.semanticSequencesTable.horizontalHeader().setStretchLastSection(True)
+        self.semanticSequencesTable.horizontalHeader().setResizeMode(QtGui.QHeaderView.ResizeToContents)
+        self.semanticSequencesTable.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.MinimumExpanding)
+        self.semanticSequencesTable.verticalHeader().setVisible(False)
+        self.semanticSequencesTable.verticalHeader().setDefaultSectionSize(30)
+        self.semanticSequencesTable.setMinimumWidth(550)
+        
+        self.semanticSequencesTable.setColumnCount(4)
+        self.semanticSequencesTable.setHorizontalHeaderLabels(["Sequence Name", "Action", "Command Type", "Command Value"])
+        numActions = 0
+        for semanticSequence in self.semanticSequences :
+            numActions += semanticSequence[DICT_NUM_SEMANTICS]
+        self.semanticSequencesTable.setMinimumHeight(30*(numActions+1)-2)
+        
+        self.semanticSequencesTable.setRowCount(numActions)
+        
+        idx = 0
+        for semanticSequence in self.semanticSequences :
+            self.semanticSequencesTable.setItem(idx, 0, QtGui.QTableWidgetItem(semanticSequence[DICT_SEQUENCE_NAME]))
+            self.semanticSequencesTable.setSpan(idx, 0, semanticSequence[DICT_NUM_SEMANTICS], 1)
+            
+            for actionKey in np.sort(semanticSequence[DICT_SEMANTICS_NAMES].keys()) :
+                self.semanticSequencesTable.setItem(idx, 1, QtGui.QTableWidgetItem(semanticSequence[DICT_SEMANTICS_NAMES][actionKey]))
+                combo = IndexedComboBox(idx, 2, self.semanticSequencesTable)
+                combo.addItems(["Key", "Color"])
+                combo.setCurrentIndex(semanticSequence[DICT_COMMAND_TYPE][actionKey])
+
+                self.semanticSequencesTable.setCellWidget(idx, 2, combo)
+                combo.currentIndexChangedSignal[int, int, int].connect(self.changeCommandType)
+                
+                ## make buttons and shit
+                self.indexedButtonsList.append(IndexedPushButton(idx, 3, DICT_COMMAND_TYPE_KEY, [QtCore.Qt.Key_0, np.zeros(3, int)]))
+                self.indexedButtonsList[-1].clickedSignal[int, int].connect(self.setCommandBinding)
+
+                self.semanticSequencesTable.setCellWidget(self.indexedButtonsList[-1].rowIndex, self.indexedButtonsList[-1].colIndex, self.indexedButtonsList[-1])
+                self.indexedButtonsList[-1].setCommandBinding(semanticSequence[DICT_COMMAND_TYPE][actionKey], semanticSequence[DICT_COMMAND_BINDING][actionKey])
+                
+                idx += 1
+        
+        self.buttonBox = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel);
+         
+        ## SIGNALS ##
+        
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        
+        ## LAYOUTS ##
+        
+        mainLayout = QtGui.QVBoxLayout()
+        
+        mainLayout.addWidget(self.semanticSequencesTable)
+        mainLayout.addWidget(self.buttonBox, QtCore.Qt.AlignCenter)
+        
+        self.setLayout(mainLayout)
+
+def changeActionsCommandBindings(parent=None, title="Dialog", semanticSequences= []) :
+    changeActionsDialog = ActionsCommandBindingsDialog(parent, title, semanticSequences)
+    exitCode = changeActionsDialog.exec_()
+    
+    return exitCode
 
 # <codecell>
 
@@ -1120,6 +1436,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.EXTEND_LENGTH = extendLength + 1 ## since I get rid of the frist frame from the generated sequence because it's forced to be the one already showing
         self.PLOT_HEIGHT = 100 ## height of label compatibility plot
         self.TEXT_SIZE = 22 ## height of sprite names in info image
+        self.MAX_PLOT_SIZE = 500
          
         self.createGUI()
         
@@ -1171,10 +1488,50 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.DO_TOGGLE = 1
         self.DO_BURST = 2
         
+#         pyglet.resource.path = ['/media/ilisescu/Data1/PhD/data/drumming2']
+        pyglet.resource.path = ['/media/ilisescu/Data1/PhD/data/toy']
+        pyglet.resource.reindex()
+        
+#         self.doPlaySounds = False
+        self.doPlaySounds = True
+        self.mergeActionRequests = self.doPlaySounds
+        if self.doPlaySounds :
+#             self.soundLocs = ["/media/ilisescu/Data1/PhD/data/drumming2/meow.wav",   ## snare               https://www.freesound.org/people/steffcaffrey/sounds/262312/
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/mario.wav",   ## high tom           https://www.youtube.com/watch?v=cBY_2ABINVg
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/laser.wav",   ## high hat           https://www.freesound.org/people/tlwm/sounds/165825/
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/mirror.wav",   ## crash             http://soundbible.com/994-Mirror-Shattering.html
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/lightsaber.wav",   ## floor tom     http://sweetsoundeffects.com/lightsaber-sounds/
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/frog.wav",   ## low tom             https://www.freesound.org/people/daveincamas/sounds/71964/
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/splash.wav",   ## splash            https://www.freesound.org/people/InspectorJ/sounds/352098/
+#                               "/media/ilisescu/Data1/PhD/data/drumming2/thunder.wav"]   ## bass             drum https://www.freesound.org/people/juskiddink/sounds/101933/
+            self.soundLocs = np.sort(glob.glob("/media/ilisescu/Data1/PhD/data/toy/toy[1-8].wav"))
+            self.mediaObjects = []
+            self._audioOutputs = []
+            self._paths = []
+            self.mediaSources = []
+            self.pygletMusic = []
+            for soundIdx, soundLoc in enumerate(self.soundLocs) :
+                self.mediaObjects.append(Phonon.MediaObject(self))
+                self._audioOutputs.append(Phonon.AudioOutput(Phonon.MusicCategory, self))
+                self._paths.append(Phonon.createPath(self.mediaObjects[soundIdx], self._audioOutputs[soundIdx]))
+                self.mediaSources.append(Phonon.MediaSource(soundLoc))
+                self.mediaObjects[soundIdx].setCurrentSource(self.mediaSources[soundIdx])
+                print soundLoc
+                self.pygletMusic.append(pyglet.resource.media(soundLoc.split(os.sep)[-1], streaming=False))
+
+            self.playSoundsTimes = {}
+        
         
         self.loadSynthesisedSequenceAtLocation(startSequenceLoc)
         
         self.setFocus()
+                        
+    def playSound(self, idx) :
+#         self.mediaObjects[idx].stop()
+#         QtGui.QApplication.processEvents()
+#         self.mediaObjects[idx].seek(0)
+#         self.mediaObjects[idx].play()
+        self.pygletMusic[idx].play()
        
     #### RENDERING ####
 
@@ -1182,7 +1539,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         if DICT_SEQUENCE_INSTANCES in self.synthesisedSequence :
             idx = self.frameIdx + 1
             if idx >= 0 and len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0 : #idx < len(self.generatedSequence[0][DICT_SEQUENCE_FRAMES]) :
-                self.frameIdxSpinBox.setValue(np.mod(idx, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][0][DICT_SEQUENCE_FRAMES])))
+                self.frameIdxSpinBox.setValue(np.mod(idx, self.frameIdxSpinBox.maximum()+1))
 
             self.frameInfo.setText("Rendering at " + np.string_(int(1.0/(time.time() - self.lastRenderTime))) + " FPS")
             self.lastRenderTime = time.time()
@@ -1190,17 +1547,28 @@ class SemanticLoopingTab(QtGui.QWidget):
     def showFrame(self, idx) :
         if np.any(self.bgImage != None) and self.overlayImg.size() != QtCore.QSize(self.bgImage.shape[1], self.bgImage.shape[0]) :
             self.overlayImg = self.overlayImg.scaled(QtCore.QSize(self.bgImage.shape[1], self.bgImage.shape[0]))
-        if self.overlayImg.size() != self.frameLabel.size() :
-            self.overlayImg = self.overlayImg.scaled(self.frameLabel.size())
+        if self.frameLabel.qImage != None and self.overlayImg.size() != self.frameLabel.qImage.size() :
+            self.overlayImg = self.overlayImg.scaled(self.frameLabel.qImage.size())
             
             
         ## empty image
         self.overlayImg.fill(QtGui.QColor.fromRgb(255, 255, 255, 0))
         if idx >= 0 and len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) > 0 :
             self.frameIdx = idx
+            if self.doPlaySounds and idx in self.playSoundsTimes.keys() :
+                for i in self.playSoundsTimes[idx].keys() :
+                    self.playSound(self.playSoundsTimes[idx][i])
+                    print "playing sound", self.playSoundsTimes[idx][i],
+                print
+            minFrames = len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][0][DICT_SEQUENCE_FRAMES])
+            for synthSeq in self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][1:] :
+                minFrames = np.min([minFrames, len(synthSeq[DICT_SEQUENCE_FRAMES])])
+            if self.mergeActionRequests and self.frameIdx == minFrames-2 :
+                print "EXTEND", self.frameIdx, minFrames
+                self.extendFullSequenceNew(np.array([-1]), verbose=False)
             
             ## go through all the semantic sequence instances
-            for s in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
+            for s in np.arange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]))[::-1] :
                 if s >= len(self.instancesDoShow) or self.instancesDoShow[s] :
                     ## index in self.semanticSequences of current instance
                     seqIdx = int(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][s][DICT_SEQUENCE_IDX])
@@ -1289,7 +1657,10 @@ class SemanticLoopingTab(QtGui.QWidget):
                     else :
                         image = np.zeros([frameSize[0], frameSize[1], 4], np.uint8)
                 else :
-                    image = np.array(Image.open(sequence[DICT_FRAMES_LOCATIONS][frameKey]))
+                    if self.loadedSynthesisedSequence == "/home/ilisescu/PhD/data/synthesisedSequences/lullaby_demo/synthesised_sequence.npy" :
+                        image = preloadedImages[frameKey]
+                    else :
+                        image = np.array(Image.open(sequence[DICT_FRAMES_LOCATIONS][frameKey]))
                 image = np.ascontiguousarray(image[aabb[0, 1]:aabb[2, 1], aabb[0, 0]:aabb[2, 0], :])
 
             
@@ -1314,7 +1685,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                                   QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         ## draw bbox
-        if doDrawBBox and frameKey in sequence[DICT_BBOXES].keys() :
+        if doDrawBBox and DICT_BBOXES in sequence.keys() and frameKey in sequence[DICT_BBOXES].keys() :
 #                 if DICT_FOOTPRINTS in sprite.keys() :
 #                     bbox = sequence[DICT_FOOTPRINTS][frameKey]
 #                 else :
@@ -1476,9 +1847,36 @@ class SemanticLoopingTab(QtGui.QWidget):
                         bestReorderedInstances = reorderedInstances
             else :
 #                 print notConflictingInstances, instancesLengths[notConflicting], np.zeros(len(notConflictingInstances), bool)
-                bestNewFrames, bestCost = self.getNewFramesForSequenceIterative(self.synthesisedSequence, notConflictingInstances, instancesLengths[notConflicting],
-                                                                                np.zeros(len(notConflictingInstances), bool), self.frameIdx, self.resolveCompatibilityBox.isChecked(),
-                                                                                self.costsAlphaSpinBox.value(), self.compatibilityAlphaSpinBox.value())
+#                 bestNewFrames, bestCost = self.getNewFramesForSequenceIterative(self.synthesisedSequence, notConflictingInstances, instancesLengths[notConflicting],
+#                                                                                 np.zeros(len(notConflictingInstances), bool), self.frameIdx, self.resolveCompatibilityBox.isChecked(),
+#                                                                                 self.costsAlphaSpinBox.value(), self.compatibilityAlphaSpinBox.value())
+                downsampleRate = self.optimizationDownsampleRateSpinBox.value()
+                bestNewFrames, bestCost, unpackedStartIdx = self.getNewFramesForSequenceIterativeDownsampled(self.synthesisedSequence, notConflictingInstances, instancesLengths[notConflicting],
+                                                                                                             np.zeros(len(notConflictingInstances), bool), self.frameIdx, self.resolveCompatibilityBox.isChecked(),
+                                                                                                             self.costsAlphaSpinBox.value(), self.compatibilityAlphaSpinBox.value(), downsampleRate)
+                print "GENERATED SEQUENCES"
+                for newSeqKey in bestNewFrames.keys() :
+                    bestNewFrames[newSeqKey] = np.concatenate([np.array([newFrameIdx*downsampleRate]) if (cIdx < len(bestNewFrames[newSeqKey])-1 and
+                                                                                                          bestNewFrames[newSeqKey][cIdx+1]-bestNewFrames[newSeqKey][cIdx] != 1)
+                                                               else np.arange(newFrameIdx*downsampleRate, newFrameIdx*downsampleRate+downsampleRate)
+                                                               for cIdx, newFrameIdx in enumerate(bestNewFrames[newSeqKey])])[unpackedStartIdx[newSeqKey]:]
+                    print bestNewFrames[newSeqKey]
+                
+#                 bob = time.time()
+#                 unpackedNewFrames = {}
+#                 for newSeqKey in tmpBestNewFrames.keys() :
+#                     unpackedNewFrames[newSeqKey] = np.concatenate([np.array([newFrameIdx*downsampleRate]) if (cIdx < len(tmpBestNewFrames[newSeqKey])-1 and
+#                                                                    tmpBestNewFrames[newSeqKey][cIdx+1]-tmpBestNewFrames[newSeqKey][cIdx] != 1)
+#                                                                    else np.arange(newFrameIdx*downsampleRate, newFrameIdx*downsampleRate+downsampleRate)
+#                                                                    for cIdx, newFrameIdx in enumerate(tmpBestNewFrames[newSeqKey])])[unpackedStartIdx[newSeqKey]:]
+#                 print "UNPACKING DURATION", time.time()-bob
+#                 print "###################################################### README ######################################################"
+#                 print bestNewFrames[0], len(bestNewFrames[0])
+#                 print
+#                 print tmpBestNewFrames[0]*downsampleRate
+#                 print
+#                 print unpackedNewFrames[0], len(unpackedNewFrames[0])
+#                 print "####################################################################################################################"
                 bestReorderedInstances = notConflictingInstances
                     
                     
@@ -1611,6 +2009,14 @@ class SemanticLoopingTab(QtGui.QWidget):
 
         return np.array(inferer.arg(), dtype=int)#, gm
     
+#     newFrames, newCost = self.getNewFramesForSequenceIterative(self.synthesisedSequence, reorderedInstances, reorderedLengths, lockedInstances,
+#                                                                                self.frameIdx, True,#self.resolveCompatibilityBox.isChecked(),
+#                                                                                self.costsAlphaSpinBox.value(), self.compatibilityAlphaSpinBox.value())
+
+#     bestNewFrames, bestCost = self.getNewFramesForSequenceIterative(self.synthesisedSequence, notConflictingInstances, instancesLengths[notConflicting],
+#                                                                     np.zeros(len(notConflictingInstances), bool), self.frameIdx, self.resolveCompatibilityBox.isChecked(),
+#                                                                     self.costsAlphaSpinBox.value(), self.compatibilityAlphaSpinBox.value())
+    
     def getNewFramesForSequenceIterative(self, synthesisedSequence, instancesToUse, instancesLengths, lockedInstances, startingFrame, resolveCompatibility = False, costsAlpha=0.5, compatibilityAlpha=0.5) :
 
         self.allUnaries = []
@@ -1719,6 +2125,134 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.synthesisedFrames[instanceIdx] = np.array(inferer.arg(), dtype=int)
 
         return self.synthesisedFrames, totalCost
+    
+    def getNewFramesForSequenceIterativeDownsampled(self, synthesisedSequence, instancesToUse, instancesLengths, lockedInstances, startingFrame,
+                                                    resolveCompatibility = False, costsAlpha=0.5, compatibilityAlpha=0.5, downsampleRate=1) :
+        downsampledInstanceLenghts = np.zeros_like(instancesLengths)
+        for idx, instanceIdx in enumerate(instancesToUse) :
+            downsampledInstanceLenghts[idx] = len(self.preloadedDistanceMatrices[synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_IDX]][::downsampleRate, ::downsampleRate])
+            
+        extendLength = int(np.floor(self.EXTEND_LENGTH/float(downsampleRate)))
+        self.allUnaries = []
+
+        self.synthesisedFrames = {}
+        unpackedStartIdx = {}
+        totalCost = 0.0
+        for instanceIdx, instanceLength, lockedInstance in zip(instancesToUse, downsampledInstanceLenghts, lockedInstances) : # xrange(len(synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
+
+            gm = opengm.gm(np.array([instanceLength]).repeat(extendLength))
+
+            seqIdx = synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_IDX]
+            desiredSemantics = synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_DESIRED_SEMANTICS][startingFrame:startingFrame+self.EXTEND_LENGTH, :]
+            desiredSemantics = desiredSemantics[::downsampleRate, :]
+            desiredSemantics = desiredSemantics[:extendLength, :]
+
+            if lockedInstance :
+                if len(synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame:startingFrame+self.EXTEND_LENGTH]) != self.EXTEND_LENGTH :
+                    print synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame:startingFrame+self.EXTEND_LENGTH],
+                    print len(synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame:startingFrame+self.EXTEND_LENGTH])
+                    raise Exception("not enough synthesised frames")
+                else :
+                    self.synthesisedFrames[instanceIdx] = synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame:startingFrame+self.EXTEND_LENGTH]
+                    print "locked instance", instanceIdx
+                    print self.synthesisedFrames[instanceIdx]
+                    continue
+
+            if len(desiredSemantics) != extendLength :
+                raise Exception("desiredSemantics length is not the same as EXTEND_LENGTH")
+
+            ################ FIND DESIRED START FRAME ################ 
+            if len(synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES]) == 0 :
+                desiredStartFrame = 0
+            else :
+                desiredStartFrame = int(np.floor(synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame]/float(downsampleRate)))
+                ## here I need the actual desired start frame as I'll have to start from it when I unpack the downsampled labels
+                unpackedStartIdx[instanceIdx] = int(np.argwhere(np.arange(desiredStartFrame*downsampleRate, desiredStartFrame*downsampleRate+downsampleRate) ==
+                                                                synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame]).flatten())
+#                 print "START FRAME", desiredStartFrame, synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_FRAMES][startingFrame], unpackedStartIdx[instanceIdx]
+
+            distVariance = 1.0/self.semanticsImportanceSpinBox.value() ##0.0005
+
+            ################ GET UNARIES ################
+            self.unaries = vectorisedMultiNormalMultipleMeans(self.semanticSequences[seqIdx][DICT_FRAME_SEMANTICS][::downsampleRate, :], desiredSemantics, np.eye(desiredSemantics.shape[1])*distVariance, False).T
+
+            ## normalizing to turn into probabilities
+            self.unaries = self.unaries / np.sum(self.unaries, axis=0).reshape((1, self.unaries.shape[1]))
+            impossibleLabels = self.unaries <= 0.0
+            ## cost is -log(prob)
+            self.unaries[np.negative(impossibleLabels)] = -np.log(self.unaries[np.negative(impossibleLabels)])
+            ## if prob == 0.0 then set maxCost
+            self.unaries[impossibleLabels] = GRAPH_MAX_COST
+
+
+            ## force desiredStartFrame to be the first frame of the new sequence
+            self.unaries[:, 0] = GRAPH_MAX_COST
+            self.unaries[desiredStartFrame, 0] = 0.0
+            ## also force second frame to be the subsequent frame so that we don't make a jump after the first frame
+            ## this is useful because when I use downsampling, I can start from the desiredStartFrame before dividing by the downsample rate and which is not possible if I perform a jump after the first frame and
+            ## desiredStartFrame is not divisible by downsampleRate
+            if downsampleRate > 1 and desiredStartFrame < instanceLength-1 :
+                self.unaries[:, 1] = GRAPH_MAX_COST
+                self.unaries[desiredStartFrame+1, 1] = 0.0
+                
+            
+            if self.loopSequenceBox.isChecked() :
+                print "Looping to", desiredStartFrame
+                self.unaries[:, -1] = GRAPH_MAX_COST
+                self.unaries[desiredStartFrame, -1] = 0.0
+                
+
+            #### minimizing totalCost = a * unary + (1 - a) * (b * vert_link + (1-b)*horiz_link) = a*unary + (1-a)*b*sum(vert_link) + (1-a)*(1-b)*horiz_link
+            #### where a = costsAlpha, b = compatibilityAlpha, 
+
+            compatibilityCosts = np.zeros_like(self.unaries)
+            if resolveCompatibility :
+                seq1Idx = synthesisedSequence[DICT_SEQUENCE_INSTANCES][instanceIdx][DICT_SEQUENCE_IDX]
+                for instance2Idx in np.sort(self.synthesisedFrames.keys()) :
+                    seq2Idx = synthesisedSequence[DICT_SEQUENCE_INSTANCES][instance2Idx][DICT_SEQUENCE_IDX]
+                    print "considering sequences", seq1Idx, seq2Idx, self.synthesisedFrames.keys(), compatibilityCosts.shape
+
+                    compatibilityCosts += (1.0-costsAlpha)*compatibilityAlpha*(self.getCompatibilityMat(np.array([seq1Idx, seq2Idx]))[::downsampleRate, ::downsampleRate])[:, self.synthesisedFrames[instance2Idx]]
+                    print "added vertical pairwise between", seq1Idx, "and", seq2Idx
+                    
+                    
+    #         ## doing the alpha*unaries + (1-alpha)*pairwise thingy
+    #         self.unaries *= costsAlpha
+            self.unaries = costsAlpha*self.unaries + compatibilityCosts
+
+
+            self.allUnaries.append(np.copy(self.unaries.T))
+
+
+            ## add unaries to the graph
+            fids = gm.addFunctions(self.unaries.T)
+            # add first order factors
+            gm.addFactors(fids, np.arange(extendLength))
+
+
+            ################ GET PAIRWISE ################
+            pairIndices = np.array([np.arange(extendLength-1), np.arange(1, extendLength)]).T
+
+    #         ## add function for row-nodes pairwise cost doing the alpha*unaries + (1-alpha)*pairwise thingy at the same time
+    #         fid = gm.addFunction((1.0-costsAlpha)*(self.preloadedTransitionCosts[seqIdx]+0.1))##self.toggleSpeedDeltaSpinBox.value())
+            if resolveCompatibility :
+                fid = gm.addFunction((1.0-costsAlpha)*(1.0-compatibilityAlpha)*(self.preloadedTransitionCosts[seqIdx]+self.toggleSpeedDeltaSpinBox.value()))
+            else :
+                fid = gm.addFunction((1.0-costsAlpha)*(self.preloadedTransitionCosts[seqIdx]+self.toggleSpeedDeltaSpinBox.value()))
+            ## add second order factors
+            gm.addFactors(fid, pairIndices)
+
+            print gm; sys.stdout.flush()
+
+            t = time.time()
+            inferer = opengm.inference.DynamicProgramming(gm=gm)
+            inferer.infer()
+            print "solved in", time.time() - t, "cost", gm.evaluate(inferer.arg())
+            print np.array(inferer.arg(), dtype=int)
+            totalCost += gm.evaluate(inferer.arg())
+            self.synthesisedFrames[instanceIdx] = np.array(inferer.arg(), dtype=int)
+
+        return self.synthesisedFrames, totalCost, unpackedStartIdx
         
     
     def getNewFramesForSequenceInstanceQuick(self, instanceIdx, semanticSequence, sequenceTransitionCost, desiredSemantics, startingFrame, framesToNotUse=np.empty((0, 2)), resolveCompatibility = False) :
@@ -2027,6 +2561,44 @@ class SemanticLoopingTab(QtGui.QWidget):
             if len(self.selectedSequenceInstancesIdxes) == 2 :
                 self.makeInfoImage([self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[0]][DICT_SEQUENCE_IDX],
                                     self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[1]][DICT_SEQUENCE_IDX]])
+                
+    def updateCompatibilityLabelsAndMatrices(self) :
+            if len(self.selectedSequenceInstancesIdxes) == 2 :
+                self.getSequencePairCompatibilityLabels([self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[0]][DICT_SEQUENCE_IDX],
+                                                         self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[1]][DICT_SEQUENCE_IDX]], True)
+                
+                self.updateCompatibilityMatrices()
+    
+    def updatePreloadedTransitionMatrices(self) :## downsample the transition matrix from the distance matrix
+        bob = time.time()
+        for seqIdx in self.preloadedDistanceMatrices.keys() :
+            ## downsample the distance matrix using opencv maybe later but for now just skip stuff
+            if self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "left_hand1" :
+                print "USING CUSTOM PARAMS 1 FOR", self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]
+                filterSize = 4; minJumpSize = 12; sigmaMultiplier = 0.006; onlyBackwards = False; threshPercentile = 0.1
+            elif self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "right_hand1" :
+                print "USING CUSTOM PARAMS 2 FOR", self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]
+                filterSize = 4; minJumpSize = 12; sigmaMultiplier = 0.01; onlyBackwards = True; threshPercentile = 0.1
+            elif self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "foot1" :
+                print "USING CUSTOM PARAMS 3 FOR", self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]
+                filterSize = 4; minJumpSize = 12; sigmaMultiplier = 0.2; onlyBackwards = True; threshPercentile = 0.2
+            else :
+                print "USING DEFAULT PARAMS", self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME]
+                filterSize = 4; minJumpSize = 20; sigmaMultiplier = 0.002; onlyBackwards = False; threshPercentile = 0.1
+                
+                
+            if self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "toy1" or self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "candle_wind1" :
+                self.preloadedTransitionCosts[seqIdx] = np.roll(np.roll(np.load(self.semanticSequences[seqIdx][DICT_TRANSITION_COSTS_LOCATION]), -1, 1)[::self.optimizationDownsampleRateSpinBox.value(),
+                                                                                                                                                        ::self.optimizationDownsampleRateSpinBox.value()], 1, 1)
+            else :
+                self.preloadedTransitionCosts[seqIdx] = computeTransitionMatrix(self.preloadedDistanceMatrices[seqIdx][::self.optimizationDownsampleRateSpinBox.value(), ::self.optimizationDownsampleRateSpinBox.value()],
+                                                                                filterSize/self.optimizationDownsampleRateSpinBox.value(), threshPercentile, minJumpSize/self.optimizationDownsampleRateSpinBox.value(),
+                                                                                onlyBackwards, False, sigmaMultiplier)
+            ## this below is for the case where I don't rememeber the transition matrix parameters like for the wave sequence
+#             self.preloadedTransitionCosts[seqIdx] = np.roll(np.roll(np.load(self.semanticSequences[seqIdx][DICT_TRANSITION_COSTS_LOCATION]), -1, 1)[::self.optimizationDownsampleRateSpinBox.value(),
+#                                                                                                                                                     ::self.optimizationDownsampleRateSpinBox.value()], 1, 1)
+            
+        print "TIME FOR COMPUTING TRANSITION MATRICES", time.time() - bob
             
     def getSequenceCompatibilityLabels(self, seq1Idx, conflictingSequenceKey, verbose=True) :
         ### gets compatibility labels using only the semantic classes plus any other class a conflict is defined for seqIdxs2
@@ -2048,7 +2620,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         
         compatibilityLabels = propagateLabels(self.preloadedDistanceMatrices[seq1Idx],
                                               np.array(self.semanticSequences[seq1Idx][DICT_LABELLED_FRAMES])[compatibilityClasses],
-                                              np.array(self.semanticSequences[seq1Idx][DICT_NUM_EXTRA_FRAMES])[compatibilityClasses], verbose, 0.002)
+                                              np.array(self.semanticSequences[seq1Idx][DICT_NUM_EXTRA_FRAMES])[compatibilityClasses], verbose, self.propagationSigmaSpinBox.value()/10.0)#, 0.002)
         
         return compatibilityLabels, compatibilityClasses
     
@@ -2154,9 +2726,11 @@ class SemanticLoopingTab(QtGui.QWidget):
             
     def makeInfoImage(self, seqIdxs) :
         if self.doShowCompatibilityInfo :
-            plotHeight = self.PLOT_HEIGHT
 #             compatibilityMat = np.log(1.0+np.copy(self.getCompatibilityMat(seqIdxs)))
             compatibilityMat = np.copy(self.getCompatibilityMat(seqIdxs))
+            self.plotScaleRatio = 1.0
+            if np.max(np.array(compatibilityMat.shape)) > self.MAX_PLOT_SIZE-self.PLOT_HEIGHT-self.TEXT_SIZE :
+                self.plotScaleRatio = (self.MAX_PLOT_SIZE-self.PLOT_HEIGHT-self.TEXT_SIZE)/float(np.max(np.array(compatibilityMat.shape)))
             ## normalize to [0, 1]    
     #         compatibilityMat += np.min(compatibilityMat)
             print "la", np.max(compatibilityMat), np.min(compatibilityMat)
@@ -2180,28 +2754,31 @@ class SemanticLoopingTab(QtGui.QWidget):
             ## first make the image showing the compatiblity matrix
 #             infoImg = mpl.cm.afmhot(compatibilityMat, bytes=True)
             infoImg = mpl.cm.jet(compatibilityMat, bytes=True)
+            infoImg = cv2.resize(infoImg, (int(np.round(infoImg.shape[1]*self.plotScaleRatio)), int(np.round(infoImg.shape[0]*self.plotScaleRatio))))
 
 
             ## then make the images showing the stackplot of the labels
     #         if DICT_FRAME_COMPATIBILITY_LABELS in self.semanticSequences[seqIdxs[0]].keys() :
-    #             infoImg = np.concatenate((valsToImg(makeStackPlot(self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS], plotHeight).T), infoImg), axis=1)
+    #             infoImg = np.concatenate((valsToImg(makeStackPlot(self.semanticSequences[seqIdxs[0]][DICT_FRAME_COMPATIBILITY_LABELS], self.PLOT_HEIGHT).T), infoImg), axis=1)
     #         else :
-    #             infoImg = np.concatenate((np.zeros((len(self.semanticSequences[seqIdxs[0]][DICT_FRAME_SEMANTICS]), plotHeight, 4), np.uint8), infoImg), axis=1)
-    #         infoImg = np.concatenate((valsToImg(makeStackPlot(sequencePairCompatibilityLabels[0][0], plotHeight).T), infoImg), axis=1)
-            infoImg = np.concatenate((mpl.cm.Set1(makeStackPlot(sequencePairCompatibilityLabels[0][0], plotHeight).T, bytes=True), infoImg), axis=1)
+    #             infoImg = np.concatenate((np.zeros((len(self.semanticSequences[seqIdxs[0]][DICT_FRAME_SEMANTICS]), self.PLOT_HEIGHT, 4), np.uint8), infoImg), axis=1)
+    #         infoImg = np.concatenate((valsToImg(makeStackPlot(sequencePairCompatibilityLabels[0][0], self.PLOT_HEIGHT).T), infoImg), axis=1)
+            infoImg = np.concatenate((cv2.resize(mpl.cm.Set1(makeStackPlot(sequencePairCompatibilityLabels[0][0], self.PLOT_HEIGHT).T, bytes=True),
+                                                 (self.PLOT_HEIGHT, infoImg.shape[0])), infoImg), axis=1)
 
 
     #         if DICT_FRAME_COMPATIBILITY_LABELS in self.semanticSequences[seqIdxs[1]].keys() :
-    #             infoImg = np.concatenate((np.concatenate((np.zeros((plotHeight, plotHeight, 4), np.uint8),
-    #                                                       valsToImg(makeStackPlot(self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS], plotHeight))), axis=1),
+    #             infoImg = np.concatenate((np.concatenate((np.zeros((self.PLOT_HEIGHT, self.PLOT_HEIGHT, 4), np.uint8),
+    #                                                       valsToImg(makeStackPlot(self.semanticSequences[seqIdxs[1]][DICT_FRAME_COMPATIBILITY_LABELS], self.PLOT_HEIGHT))), axis=1),
     #                                       infoImg), axis=0)
     #         else :
-    #             infoImg = np.concatenate((np.zeros((plotHeight, len(self.semanticSequences[seqIdxs[1]][DICT_FRAME_SEMANTICS])+plotHeight, 4), np.uint8),
+    #             infoImg = np.concatenate((np.zeros((self.PLOT_HEIGHT, len(self.semanticSequences[seqIdxs[1]][DICT_FRAME_SEMANTICS])+self.PLOT_HEIGHT, 4), np.uint8),
     #                                       infoImg), axis=0)
-    #         infoImg = np.concatenate((np.concatenate((np.zeros((plotHeight, plotHeight, 4), np.uint8),
-    #                                                   valsToImg(makeStackPlot(sequencePairCompatibilityLabels[1][0], plotHeight))), axis=1), infoImg), axis=0)
-            infoImg = np.concatenate((np.concatenate((np.zeros((plotHeight, plotHeight, 4), np.uint8),
-                                                      mpl.cm.Set1(makeStackPlot(sequencePairCompatibilityLabels[1][0], plotHeight), bytes=True)), axis=1), infoImg), axis=0)
+    #         infoImg = np.concatenate((np.concatenate((np.zeros((self.PLOT_HEIGHT, self.PLOT_HEIGHT, 4), np.uint8),
+    #                                                   valsToImg(makeStackPlot(sequencePairCompatibilityLabels[1][0], self.PLOT_HEIGHT))), axis=1), infoImg), axis=0)
+            infoImg = np.concatenate((np.concatenate((np.zeros((self.PLOT_HEIGHT, self.PLOT_HEIGHT, 4), np.uint8),
+                                                      cv2.resize(mpl.cm.Set1(makeStackPlot(sequencePairCompatibilityLabels[1][0], self.PLOT_HEIGHT), bytes=True),
+                                                                 (infoImg.shape[1]-self.PLOT_HEIGHT, self.PLOT_HEIGHT))), axis=1), infoImg), axis=0)
 
             ## finally make the labelCompatibility matrix image
             if (DICT_LABELLED_FRAMES in self.semanticSequences[seqIdxs[0]].keys() and
@@ -2252,7 +2829,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                           -compatImgSize[1]+spacing:-spacing, :] = mpl.cm.Set1(makeStackPlot(np.ones((labelScalesWidth, seq2NumLabels))/seq2NumLabels,
                                                                                            compatImgSize[1]-2*spacing).T, bytes=True)
 
-                infoImg[:plotHeight, :plotHeight, :] = cv2.resize(compatImg, (plotHeight, plotHeight))
+                infoImg[:self.PLOT_HEIGHT, :self.PLOT_HEIGHT, :] = cv2.resize(compatImg, (self.PLOT_HEIGHT, self.PLOT_HEIGHT))
 
             ## render sequence names
             textSize = self.TEXT_SIZE 
@@ -2311,7 +2888,7 @@ class SemanticLoopingTab(QtGui.QWidget):
 
     def initNewSemanticSequenceInstance(self, frameKey) :
         frameSize = np.array(Image.open(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS][self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys()[0]])).shape[:2]
-        if frameKey in self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES].keys() :
+        if DICT_BBOXES in self.semanticSequences[self.selectedSemSequenceIdx].keys() and frameKey in self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES].keys() :
             tl = np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES][frameKey], axis=0)
             br = np.max(self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES][frameKey], axis=0)
         else :
@@ -2350,7 +2927,8 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.showFrame(self.frameIdx)
         
         ### UI stuff ###
-        self.addNewSemanticSequenceControls.setVisible(False)
+#         self.addNewSemanticSequenceControls.setVisible(False)
+        self.addNewSemanticSequenceControls.done(0)
         self.frameIdxSlider.setEnabled(True)
         self.frameIdxSpinBox.setEnabled(True)
         
@@ -2432,14 +3010,31 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.sequenceInstancesListTable.selectRow(self.selectedSequenceInstancesIdxes[-1])
         
             
-        self.addNewSemanticSequenceControls.setVisible(False)
+#         self.addNewSemanticSequenceControls.setVisible(False)
+        self.addNewSemanticSequenceControls.done(1)
         self.frameIdxSlider.setEnabled(True)
         self.frameIdxSpinBox.setEnabled(True)
        
     #### HANDLE KEY AND BUTTON PRESSES ####
     
     def loadNumberSequence(self) :
-        numberSequenceDir = QtGui.QFileDialog.getExistingDirectory(self, "Load Number Sequence", "/media/ilisescu/Data1/PhD/data/wave_numbersynth_sequence/")#self.dataPath)
+        for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
+            seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
+            
+            doAskQuestion = False
+            for actionKey in np.sort(self.semanticSequences[seqIdx][DICT_COMMAND_TYPE].keys()) :
+                if self.semanticSequences[seqIdx][DICT_COMMAND_TYPE][actionKey] != DICT_COMMAND_TYPE_COLOR :
+                    doAskQuestion = True
+                    break
+            
+            if doAskQuestion :
+                proceed = QtGui.QMessageBox.question(self, 'Wrong Command Binding', "Some actor sequences' action commands are not bound to colors.\nWould you like to open the Action Command Bindings Dialog?", 
+                                                     QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
+                if proceed :
+                    changeActionsCommandBindings(self, "Change Action Command Bindings", self.semanticSequences)
+                break
+            
+        numberSequenceDir = QtGui.QFileDialog.getExistingDirectory(self, "Load Number Sequence", self.dataPath)
         
         if numberSequenceDir != "" :
             numbersSequenceFrames = np.sort(glob.glob(numberSequenceDir+"/numbers-frame-*.png"))
@@ -2450,12 +3045,30 @@ class SemanticLoopingTab(QtGui.QWidget):
                 for i, frameLoc in enumerate(numbersSequenceFrames) :
                     allFrames[i, :, :, :] = np.array(Image.open(frameLoc)).astype(np.uint8)
                     
-                classColors = np.array([[0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
+#                 classColors = np.array([[0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
                     
                 for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
                     seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_IDX]
+                    
+                    doUseSequence = True
+                    classColors = np.ones([len(self.semanticSequences[seqIdx][DICT_COMMAND_TYPE].keys()), 4])
+                    for actionKey in np.sort(self.semanticSequences[seqIdx][DICT_COMMAND_TYPE].keys()) :
+                        if self.semanticSequences[seqIdx][DICT_COMMAND_TYPE][actionKey] != DICT_COMMAND_TYPE_COLOR :
+                            doUseSequence = False
+                            break
+                        else :
+                            classColors[actionKey, :-1] = self.semanticSequences[seqIdx][DICT_COMMAND_BINDING][actionKey]/255.0
+                            print actionKey, self.semanticSequences[seqIdx][DICT_COMMAND_BINDING][actionKey]/255.0
+                    
+                    if not doUseSequence :
+                        print "NOT USING SEQUENCE", self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME], "BECAUSE ACTION COMMANDS NOT BOUND TO COLORS"
+                        continue
+                    else :
+                        print classColors
+                    
                     frameIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES][0]
                     frameKey = np.sort(self.semanticSequences[seqIdx][DICT_FRAMES_LOCATIONS].keys())[frameIdx]
+                    sigma = 0.2
                     bboxCenter = np.array([0, 0])
                     if DICT_BBOX_CENTERS in self.semanticSequences[seqIdx].keys() :
                         if frameKey in self.semanticSequences[seqIdx][DICT_BBOX_CENTERS].keys() :
@@ -2466,17 +3079,21 @@ class SemanticLoopingTab(QtGui.QWidget):
                     bboxCenter = (bboxCenter*self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SCALE])+self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_OFFSET]
                     
                     classDists = np.sqrt(np.sum((allFrames[0, bboxCenter[1], bboxCenter[0], :]/255.0 - classColors)**2, axis=1))
-                    classDists /= np.sum(classDists)
+                    print 0, allFrames[0, bboxCenter[1], bboxCenter[0], :]/255.0, classDists, np.exp(-classDists/sigma), np.exp(-classDists/sigma)/np.sum(np.exp(-classDists/sigma))
+#                     classDists /= np.sum(classDists)
+                    classDists = np.exp(-classDists/sigma)/np.sum(np.exp(-classDists/sigma))
                     ## re-set first frame and delete all the rest
                     self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES] = np.zeros(1, dtype=int)
                     self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES][0] = int(np.random.choice(np.argwhere((self.semanticSequences[seqIdx][DICT_FRAME_SEMANTICS]
-                                                                                                                                      [:, int(np.argmax(classDists))]) >= 0.99).flatten()))
+                                                                                                                                      [:, int(np.argmax(classDists))]) > 0.99).flatten()))
                     ## re-set first desired semantics and delete all the rest
                     self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS] = classDists.reshape((1, len(classColors)))
                     
                     for j in xrange(1, allFrames.shape[0]) :
                         classDists = np.sqrt(np.sum((allFrames[j, bboxCenter[1], bboxCenter[0], :]/255.0 - classColors)**2, axis=1))
-                        classDists /= np.sum(classDists)
+#                         print j, allFrames[j, bboxCenter[1], bboxCenter[0], :]/255.0, classDists, np.exp(-classDists/sigma), np.exp(-classDists/sigma)/np.sum(np.exp(-classDists/sigma))
+#                         classDists /= np.sum(classDists)
+                        classDists = np.exp(-classDists/sigma)/np.sum(np.exp(-classDists/sigma))
                         self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS] = np.concatenate((self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS],
                                                                                                                        classDists.reshape(1, len(classColors))))
 #                         print bboxCenter, allFrames[j, bboxCenter[1], bboxCenter[0],  :], classDists, self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_DESIRED_SEMANTICS].shape
@@ -2978,14 +3595,15 @@ class SemanticLoopingTab(QtGui.QWidget):
                 print "moving instance",
                 if len(self.selectedSequenceInstancesIdxes) == 1 :
                     print self.selectedSequenceInstancesIdxes[0],
-                    if e.key() == QtCore.Qt.Key_U and self.selectedSequenceInstancesIdxes[0] < len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) - 1 :
+                    ## down means up the list as I'm visualizing from the first to the last and rendering the last ones first (for consistency as the list is basically a list of layers and first one should be on top of rest)
+                    if e.key() == QtCore.Qt.Key_D and self.selectedSequenceInstancesIdxes[0] < len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) - 1 :
                         self.synthesisedSequence[DICT_SEQUENCE_INSTANCES].insert(self.selectedSequenceInstancesIdxes[0]+1, 
                                                                                  self.synthesisedSequence[DICT_SEQUENCE_INSTANCES].pop(self.selectedSequenceInstancesIdxes[0]))
-                        print "up"
-                    elif e.key() == QtCore.Qt.Key_D and self.selectedSequenceInstancesIdxes[0] > 0 :
+                        print "down"
+                    elif e.key() == QtCore.Qt.Key_U and self.selectedSequenceInstancesIdxes[0] > 0 :
                         self.synthesisedSequence[DICT_SEQUENCE_INSTANCES].insert(self.selectedSequenceInstancesIdxes[0]-1, 
                                                                                  self.synthesisedSequence[DICT_SEQUENCE_INSTANCES].pop(self.selectedSequenceInstancesIdxes[0]))
-                        print "down"
+                        print "up"
 
                     self.setSemanticSliderDrawables()
                     self.setListOfSequenceInstances()
@@ -2995,8 +3613,9 @@ class SemanticLoopingTab(QtGui.QWidget):
                 print
             elif e.key() == e.key() >= QtCore.Qt.Key_0 and e.key() <= QtCore.Qt.Key_9 :
                 pressedNum = np.mod(e.key()-int(QtCore.Qt.Key_0), int(QtCore.Qt.Key_9))
+                doAllowRandomChoice = False
                 chosenRandomly = False
-                if len(self.selectedSequenceInstancesIdxes) == 0 :
+                if doAllowRandomChoice and len(self.selectedSequenceInstancesIdxes) == 0 :
                     ## randomize which instance I pick
                     viableInstances = []
                     for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
@@ -3006,6 +3625,16 @@ class SemanticLoopingTab(QtGui.QWidget):
                     if len(viableInstances) > 0 :
                         self.selectedSequenceInstancesIdxes = [np.random.choice(viableInstances)]
                     chosenRandomly = True
+                
+                ## each pressed number is a key in the dict below which contains the index of the instance the key press refers and the action index
+                ## e.g. if I press the number 5, I want to trigger action 1 of instance 0 (which for drumming_new, it should be the floor tom of right_hand1)
+                self.mergedActionRequestsBindings = {1:[1, 1], 2:[1, 2], 3:[1, 3], 4:[1, 4], 5:[0, 1], 6:[0, 2], 7:[0, 3], 8:[2, 1]}
+                ## key mappings for toy1
+                if self.loadedSynthesisedSequence == "/home/ilisescu/PhD/data/synthesisedSequences/lullaby_demo/synthesised_sequence.npy" :
+                    self.mergedActionRequestsBindings = {1:[0, 1], 2:[0, 2], 3:[0, 3], 4:[0, 4], 5:[0,  5], 6:[0, 6], 7:[0, 7], 8:[0, 8]}
+                if self.mergeActionRequests and pressedNum in self.mergedActionRequestsBindings.keys() :
+                    self.selectedSequenceInstancesIdxes = [self.mergedActionRequestsBindings[pressedNum][0]]
+                    pressedNum = self.mergedActionRequestsBindings[pressedNum][1]
                         
                 if len(self.selectedSequenceInstancesIdxes) == 1 and self.selectedSequenceInstancesIdxes[-1] >= 0 and self.selectedSequenceInstancesIdxes[-1] < len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]) :
 
@@ -3015,6 +3644,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                     currentSemanticsIdx = np.argwhere(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS][self.frameIdx, :] == 1.0)
                     numSemantics = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS].shape[1]
                     if pressedNum < numSemantics :
+                        doSwitchBackToRest = (e.modifiers() & QtCore.Qt.Modifier.ALT or self.mergeActionRequests) and pressedNum != 0
 
                         ## take current semantics
                         desiredSemantics = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS][self.frameIdx, :].reshape((1, numSemantics))
@@ -3034,7 +3664,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                             desiredSemantics = np.concatenate((desiredSemantics, toggledlabels)) #np.zeros((self.TOGGLE_DELAY, numSemantics))))
 
                             ## if impulse, toggle back to default semantics (i.e. the 0th one for now, not sure how to set this for arbitrary sequences)
-                            if e.modifiers() & QtCore.Qt.Modifier.ALT and pressedNum != 0 :
+                            if False and  e.modifiers() & QtCore.Qt.Modifier.ALT and pressedNum != 0 :
                                 ## pad the tip with new semantics
                                 tmp = np.zeros((1, numSemantics))
                                 tmp[0, pressedNum] = 1.0
@@ -3066,12 +3696,90 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                                                                                                                          [self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS]
                                                                                                                                                          [:self.frameIdx]),
                                                                                                                                                  desiredSemantics))
-
+                        
     #                     self.extendFullSequence()
                         if e.modifiers() & QtCore.Qt.Modifier.CTRL and len(self.selectedSequenceInstancesIdxes) > 0 :
                             self.extendFullSequenceNew(np.array([-1]), self.selectedSequenceInstancesIdxes, verbose=False)
                         else :
                             self.extendFullSequenceNew(np.array([-1]), verbose=False)
+                        
+                        ## make sure I remove the sounds to be played if I generate more stuff on top of them
+                        if self.doPlaySounds :
+                            ## remove keys that are bigger than self.frameIdx
+                            for key in self.playSoundsTimes.keys() :
+                                if key > self.frameIdx and self.selectedSequenceInstancesIdxes[-1] in self.playSoundsTimes[key].keys() :
+                                    del self.playSoundsTimes[key][self.selectedSequenceInstancesIdxes[-1]]
+                                if len(self.playSoundsTimes[key].keys()) == 0 :
+                                    del self.playSoundsTimes[key]
+                                    
+                        ## sitch back to the rest position if wanted
+                        if doSwitchBackToRest :
+                            seqIdx = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_IDX]
+                            newlySynthesisedFrames = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES][self.frameIdx:]
+#                             print "README", newlySynthesisedFrames, pressedNum, seqIdx
+#                             print self.semanticSequences[seqIdx][DICT_FRAME_SEMANTICS][newlySynthesisedFrames, pressedNum]
+                            desiredSemanticProbabilities = np.argwhere(self.semanticSequences[seqIdx][DICT_FRAME_SEMANTICS][newlySynthesisedFrames, pressedNum] > 0.99).flatten()
+                            if len(desiredSemanticProbabilities) > 0 and desiredSemanticProbabilities[0] < len(newlySynthesisedFrames)-self.TOGGLE_DELAY*2-1:
+                                currentFrameIdx = np.copy(self.frameIdx)
+                                self.frameIdx = int(self.frameIdx + desiredSemanticProbabilities[0]+1)
+                                self.EXTEND_LENGTH = len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES])-self.frameIdx
+                                
+                                ## get desired semantics by switching to the rest action and padding with the rest action till the end
+                                desiredSemantics = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS][self.frameIdx, :].reshape((1, numSemantics))
+                                toggledlabels = toggleAllLabelsSmoothly(desiredSemantics[-1, :], 0, self.TOGGLE_DELAY)
+                                desiredSemantics = np.concatenate((desiredSemantics, toggledlabels))
+
+                                ## pad remaining with default semantics
+                                tmp = np.zeros((1, numSemantics))
+                                tmp[0, 0] = 1.0
+                                desiredSemantics = np.concatenate((desiredSemantics, tmp.repeat(self.EXTEND_LENGTH-self.TOGGLE_DELAY-1, axis=0)))
+                                
+                                
+#                                 print self.frameIdx, self.EXTEND_LENGTH, desiredSemantics.shape
+
+                                ## remove synthesised frames after frameIdx
+                                self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_SEQUENCE_FRAMES] = (self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]
+                                                                                                                                                    [self.selectedSequenceInstancesIdxes[-1]]
+                                                                                                                                                    [DICT_SEQUENCE_FRAMES][:self.frameIdx+1])
+                                ## override existing desired semantics from frameIdx on
+                                self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[-1]][DICT_DESIRED_SEMANTICS] = np.vstack(((self.synthesisedSequence[DICT_SEQUENCE_INSTANCES]
+                                                                                                                                                                 [self.selectedSequenceInstancesIdxes[-1]]
+                                                                                                                                                                 [DICT_DESIRED_SEMANTICS][:self.frameIdx]), desiredSemantics))                                        
+                                
+                                self.extendFullSequenceNew(np.array([-1]), self.selectedSequenceInstancesIdxes, verbose=False)
+                        
+                                ## deal with sound playback bookeeping
+                                if self.doPlaySounds:                                    
+                                    soundIdxStart = 0
+                                    if self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "left_hand1" :
+                                        soundIdxStart = 0
+                                    elif self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "right_hand1" :
+                                        soundIdxStart = 4
+                                    elif self.semanticSequences[seqIdx][DICT_SEQUENCE_NAME] == "foot1" :
+                                        soundIdxStart = 7
+                                    soundToPlayIdx = pressedNum-1+soundIdxStart
+                                    
+                                    ## remove keys that are bigger than self.frameIdx
+                                    for key in self.playSoundsTimes.keys() :
+                                        if key > self.frameIdx and self.selectedSequenceInstancesIdxes[-1] in self.playSoundsTimes[key].keys() :
+                                            del self.playSoundsTimes[key][self.selectedSequenceInstancesIdxes[-1]]
+                                        if len(self.playSoundsTimes[key].keys()) == 0 :
+                                            del self.playSoundsTimes[key]
+                                    
+#                                     print "ADDING SOUND AT", self.frameIdx, self.playSoundsTimes, "#############", 
+                                    if self.frameIdx not in self.playSoundsTimes.keys() :
+#                                         print "LALALA", self.playSoundsTimes, type(self.frameIdx), "LALALA", 
+                                        self.playSoundsTimes[self.frameIdx] = {}
+#                                         print "LALALA2", self.playSoundsTimes, self.frameIdx, self.selectedSequenceInstancesIdxes[-1], "LALALA2", 
+                                    self.playSoundsTimes[self.frameIdx][self.selectedSequenceInstancesIdxes[-1]] = soundToPlayIdx
+#                                     print self.selectedSequenceInstancesIdxes[-1], self.playSoundsTimes
+                                    
+                                ## restore vars to previous values
+                                self.frameIdx = np.copy(currentFrameIdx)
+                                self.EXTEND_LENGTH = self.extendLengthSpinBox.value()
+                            else :
+                                QtGui.QMessageBox.warning(self, "Cannot switch to rest action", ("<p align='center'>Cannot switch back to rest action as the desired action has not been reached."+
+                                                                                                 "\nPlease increase the value of a (i.e. the importance of showing the desired action)</p>"))
                             
                 if chosenRandomly :
                     self.selectedSequenceInstancesIdxes = []
@@ -3125,7 +3833,7 @@ class SemanticLoopingTab(QtGui.QWidget):
     #                 self.frameIdxSpinBox.setValue(minFrames-1)
                 else :
                     if e.modifiers() & QtCore.Qt.Modifier.SHIFT and minFrames > self.frameIdx :
-                        ## first delete for each isntance the generated frames from self.frameIdx and then extend with existing desired semantics
+                        ## first delete for each instance the generated frames from self.frameIdx and then extend with existing desired semantics
                         for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
                             self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES] = self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES][:self.frameIdx+1]
                         minFrames = self.frameIdx+1
@@ -3215,7 +3923,7 @@ class SemanticLoopingTab(QtGui.QWidget):
             elif e.key() == QtCore.Qt.Key_A :
                 if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
                     ### UI stuff ###
-                    self.addNewSemanticSequenceControls.setVisible(True)
+#                     self.addNewSemanticSequenceControls.setVisible(True)
                     self.frameIdxSlider.setEnabled(False)
                     self.frameIdxSpinBox.setEnabled(False)
                     self.sequenceXOffsetSpinBox.setValue(0)
@@ -3223,17 +3931,25 @@ class SemanticLoopingTab(QtGui.QWidget):
                     self.sequenceXScaleSpinBox.setValue(1.0)
                     self.sequenceYScaleSpinBox.setValue(1.0)
                     self.startingSemanticsComboBox.clear()
-                    self.startingSemanticsComboBox.addItems(np.arange(self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_SEMANTICS]).astype(np.string0))
+#                     self.startingSemanticsComboBox.addItems(np.arange(self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_SEMANTICS]).astype(np.string0))
+                    self.startingSemanticsComboBox.addItems([self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES][bob]
+                                                             for bob in self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES].keys()])
                     self.startingSemanticsComboBox.setCurrentIndex(0)
 
                     ## this code is replicated in currentStartingSemanticsChanged but whatevs
                     frameIdx = int(np.argwhere(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS][:, 0] >= 0.9)[0])
                     frameKey = np.sort(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())[frameIdx]
                     self.initNewSemanticSequenceInstance(frameKey)
+                    
+                    self.addNewSemanticSequenceControls.setWindowTitle("Add Copy of \"{0}\"".format(self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME]))
+                    self.addNewSemanticSequenceControls.exec_()
             elif e.key() == QtCore.Qt.Key_Right :
                 self.frameIdxSpinBox.setValue(self.frameIdx+1)
             elif e.key() == QtCore.Qt.Key_Left :
                 self.frameIdxSpinBox.setValue(self.frameIdx-1)
+            elif e.key() == QtCore.Qt.Key_K :
+                if len(self.semanticSequences) > 0 :
+                    changeActionsCommandBindings(self, "Change Action Command Bindings", self.semanticSequences)
 
             sys.stdout.flush()
     
@@ -3305,12 +4021,15 @@ class SemanticLoopingTab(QtGui.QWidget):
 
                 if posXY[0] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) and posXY[1] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
                     self.infoFrameIdxs = (posXY - (self.PLOT_HEIGHT + self.TEXT_SIZE))[::-1]
+                    self.infoFrameIdxs = np.round(self.infoFrameIdxs/self.plotScaleRatio).astype(int)
                 elif posXY[0] >= self.TEXT_SIZE and posXY[1] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
                     self.infoFrameIdxs[0] = posXY[1]-(self.PLOT_HEIGHT + self.TEXT_SIZE)
+                    self.infoFrameIdxs[0] = int(np.round(self.infoFrameIdxs[0]/self.plotScaleRatio))
                 elif posXY[1] >= self.TEXT_SIZE and posXY[0] >= (self.PLOT_HEIGHT + self.TEXT_SIZE) :
                     self.infoFrameIdxs[1] = posXY[0]-(self.PLOT_HEIGHT + self.TEXT_SIZE)
-                else :
-                    self.infoFrameIdxs = np.array([-1, -1])
+                    self.infoFrameIdxs[1] = int(np.round(self.infoFrameIdxs[1]/self.plotScaleRatio))
+#                 else :
+#                     self.infoFrameIdxs = np.array([-1, -1])
 
                 if (np.all(self.infoFrameIdxs >= 0) and self.infoFrameIdxs[0] < len(self.semanticSequences[seqIdxs[0]][DICT_FRAMES_LOCATIONS]) and
                     self.infoFrameIdxs[1] < len(self.semanticSequences[seqIdxs[1]][DICT_FRAMES_LOCATIONS])) :
@@ -3330,6 +4049,8 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                                                                 self.semanticSequences[seqIdxs[1]][DICT_SEQUENCE_NAME], self.infoFrameIdxs[1],
                                                                                                 np.array_str(sequencePairCompatibilityLabels[1][0][self.infoFrameIdxs[1], :],
                                                                                                              precision=1)))
+                        
+                        self.infoDialog.setCursorPosition((self.infoFrameIdxs*self.plotScaleRatio+self.TEXT_SIZE+self.PLOT_HEIGHT)[::-1])
 
                     ## update visLabel
                     if np.all(self.bgImage != None) :
@@ -3350,7 +4071,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                             frameToShowKey = -1
 
                         if frameToShowKey >= 0 and seqIdx >= 0 and seqIdx < len(self.semanticSequences) :
-                            if frameToShowKey in self.preloadedPatches[seqIdx] :
+                            if seqIdx in self.preloadedPatches.keys() and frameToShowKey in self.preloadedPatches[seqIdx] :
                                 visImg = self.drawOverlay(visImg, self.semanticSequences[seqIdx], frameToShowKey,
                                                           self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[i]][DICT_OFFSET],
                                                           self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][self.selectedSequenceInstancesIdxes[i]][DICT_SCALE],
@@ -3413,8 +4134,11 @@ class SemanticLoopingTab(QtGui.QWidget):
 
                         self.iconImage = np.ascontiguousarray(cv2.resize(iconPatch, (LIST_SECTION_SIZE, LIST_SECTION_SIZE), interpolation=cv2.INTER_AREA))
                     else :
+                        frameKey = self.semanticSequences[i][DICT_ICON_FRAME_KEY]
+                        if frameKey not in self.semanticSequences[i][DICT_FRAMES_LOCATIONS].keys() :
+                            frameKey = self.semanticSequences[i][DICT_FRAMES_LOCATIONS].keys()[0]
                         
-                        framePatch = np.array(Image.open(self.semanticSequences[i][DICT_FRAMES_LOCATIONS][self.semanticSequences[i][DICT_ICON_FRAME_KEY]]))
+                        framePatch = np.array(Image.open(self.semanticSequences[i][DICT_FRAMES_LOCATIONS][frameKey]))
                         framePatch = framePatch[self.semanticSequences[i][DICT_ICON_TOP_LEFT][0]:self.semanticSequences[i][DICT_ICON_TOP_LEFT][0]+self.semanticSequences[i][DICT_ICON_SIZE],
                                                 self.semanticSequences[i][DICT_ICON_TOP_LEFT][1]:self.semanticSequences[i][DICT_ICON_TOP_LEFT][1]+self.semanticSequences[i][DICT_ICON_SIZE], :]
                         
@@ -3675,6 +4399,38 @@ class SemanticLoopingTab(QtGui.QWidget):
                     with open(self.semanticSequences[-1][DICT_DISTANCE_MATRIX_LOCATION]) as f :
                         self.preloadedDistanceMatrices[index] = np.load(f)
                         print "loaded distances", self.semanticSequences[-1][DICT_DISTANCE_MATRIX_LOCATION]; sys.stdout.flush()
+                    
+                ## check that they have defined actions
+                if DICT_NUM_SEMANTICS in self.semanticSequences[-1].keys() :
+                    tmpDoSave = False
+                    # check if they have assigned names
+                    if DICT_SEMANTICS_NAMES not in self.semanticSequences[-1].keys() :
+                        self.semanticSequences[-1][DICT_SEMANTICS_NAMES] = {}
+                        tmpDoSave = True
+
+                    for semIdx in xrange(self.semanticSequences[-1][DICT_NUM_SEMANTICS]) :
+                        if semIdx not in self.semanticSequences[-1][DICT_SEMANTICS_NAMES].keys() :
+                            self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx] = "action{0:d}".format(semIdx)
+                            print "ACTION NAME", self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx], "added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                    
+                    ## check if they have assigned keybindings (or color bindings)
+                    if DICT_COMMAND_TYPE not in self.semanticSequences[-1].keys() or DICT_COMMAND_BINDING not in self.semanticSequences[-1].keys() :
+                        self.semanticSequences[-1][DICT_COMMAND_TYPE] = {}
+                        self.semanticSequences[-1][DICT_COMMAND_BINDING] = {}
+                        tmpDoSave = True
+
+                    for semIdx in xrange(self.semanticSequences[-1][DICT_NUM_SEMANTICS]) :
+                        if semIdx not in self.semanticSequences[-1][DICT_COMMAND_TYPE].keys() :
+                            self.semanticSequences[-1][DICT_COMMAND_TYPE][semIdx] = DICT_COMMAND_TYPE_KEY
+                            print "COMMAND TYPE DICT_COMMAND_TYPE_KEY added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                        if semIdx not in self.semanticSequences[-1][DICT_COMMAND_BINDING].keys() :
+                            self.semanticSequences[-1][DICT_COMMAND_BINDING][semIdx] = np.string0(semIdx)
+                            print "COMMAND BINDING ", self.semanticSequences[-1][DICT_COMMAND_BINDING][semIdx], " added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                    if tmpDoSave :
+                        np.save(self.semanticSequences[-1][DICT_SEQUENCE_LOCATION], self.semanticSequences[-1])
             print
             print "#####################"
             
@@ -3708,6 +4464,13 @@ class SemanticLoopingTab(QtGui.QWidget):
             maxFrames = 0
             for i in xrange(len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES])) :
                 maxFrames = np.max((maxFrames, len(self.synthesisedSequence[DICT_SEQUENCE_INSTANCES][i][DICT_SEQUENCE_FRAMES])))
+                
+            if self.doPlaySounds :
+                if os.path.isfile(os.sep.join(self.loadedSynthesisedSequence.split(os.sep)[:-1])+os.sep+"playSoundsTimes.npy") :
+                    self.playSoundsTimes = np.load(os.sep.join(self.loadedSynthesisedSequence.split(os.sep)[:-1])+os.sep+"playSoundsTimes.npy").item()
+                    print self.playSoundsTimes
+                else :
+                    self.playSoundsTimes = {}
 
             if maxFrames > 0 :
                 self.frameIdxSlider.setMaximum(maxFrames-1)
@@ -3721,7 +4484,10 @@ class SemanticLoopingTab(QtGui.QWidget):
 
             ## render
             self.frameIdx = 0
-            self.frameIdxSpinBox.setValue(self.frameIdx)
+            if self.frameIdxSpinBox.value() == self.frameIdx :
+                self.showFrame(self.frameIdx)
+            else :
+                self.frameIdxSpinBox.setValue(self.frameIdx)
 
             ## load tagged frames
             if os.path.isfile("/".join(self.loadedSynthesisedSequence.split("/")[:-1])+"/tagged_frames.npy") :
@@ -3733,10 +4499,13 @@ class SemanticLoopingTab(QtGui.QWidget):
             self.loadNumberSequenceButton.setEnabled(True)
             self.frameInfo.setText("Loaded sequence at " + self.loadedSynthesisedSequence)
             self.isSequenceLoaded = True
+            self.optimizationDownsampleRateSpinBox.setValue(1)
     
     def saveSynthesisedSequence(self) :
         if np.any(self.loadedSynthesisedSequence != None) :
             np.save(self.loadedSynthesisedSequence, self.synthesisedSequence)
+            if self.doPlaySounds :
+                np.save(os.sep.join(self.loadedSynthesisedSequence.split(os.sep)[:-1])+os.sep+"playSoundsTimes.npy", self.playSoundsTimes)
             
             self.frameInfo.setText("Saved sequence at " + self.loadedSynthesisedSequence)
     
@@ -3746,7 +4515,7 @@ class SemanticLoopingTab(QtGui.QWidget):
                                                                          "<br>Please create a new sequence or load an existing one.</p>"))
             return
         
-        fileNames = QtGui.QFileDialog.getOpenFileNames(self, "Load Input Sequence(s)", self.dataPath, "Input Sequences (semantic_sequence*.npy)")[0]
+        fileNames = QtGui.QFileDialog.getOpenFileNames(self, "Load Actor Sequence(s)", self.dataPath, "Actor Sequences (semantic_sequence*.npy)")[0]
         for fileName in fileNames :
             semanticSequence = np.load(fileName).item()
             status, message = self.checkSemanticSequence(semanticSequence)
@@ -3758,11 +4527,43 @@ class SemanticLoopingTab(QtGui.QWidget):
                     self.preloadedTransitionCosts[len(self.semanticSequences)-1] = np.load(self.semanticSequences[-1][DICT_TRANSITION_COSTS_LOCATION])
                 if DICT_DISTANCE_MATRIX_LOCATION in self.semanticSequences[-1].keys() :
                     self.preloadedDistanceMatrices[len(self.semanticSequences)-1] = np.load(self.semanticSequences[-1][DICT_DISTANCE_MATRIX_LOCATION])
+                    
+                ## check that they have defined actions 
+                if DICT_NUM_SEMANTICS in self.semanticSequences[-1].keys() :
+                    tmpDoSave = False
+                    # check if they have assigned names
+                    if DICT_SEMANTICS_NAMES not in self.semanticSequences[-1].keys() :
+                        self.semanticSequences[-1][DICT_SEMANTICS_NAMES] = {}
+                        tmpDoSave = True
+
+                    for semIdx in xrange(self.semanticSequences[-1][DICT_NUM_SEMANTICS]) :
+                        if semIdx not in self.semanticSequences[-1][DICT_SEMANTICS_NAMES].keys() :
+                            self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx] = "action{0:d}".format(semIdx)
+                            print "ACTION NAME", self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx], "added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                    
+                    ## check if they have assigned keybindings (or color bindings)
+                    if DICT_COMMAND_TYPE not in self.semanticSequences[-1].keys() or DICT_COMMAND_BINDING not in self.semanticSequences[-1].keys() :
+                        self.semanticSequences[-1][DICT_COMMAND_TYPE] = {}
+                        self.semanticSequences[-1][DICT_COMMAND_BINDING] = {}
+                        tmpDoSave = True
+
+                    for semIdx in xrange(self.semanticSequences[-1][DICT_NUM_SEMANTICS]) :
+                        if semIdx not in self.semanticSequences[-1][DICT_COMMAND_TYPE].keys() :
+                            self.semanticSequences[-1][DICT_COMMAND_TYPE][semIdx] = DICT_COMMAND_TYPE_KEY
+                            print "COMMAND TYPE DICT_COMMAND_TYPE_KEY added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                        if semIdx not in self.semanticSequences[-1][DICT_COMMAND_BINDING].keys() :
+                            self.semanticSequences[-1][DICT_COMMAND_BINDING][semIdx] = np.string0(semIdx)
+                            print "COMMAND BINDING ", self.semanticSequences[-1][DICT_COMMAND_BINDING][semIdx], " added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                            tmpDoSave = True
+                    if tmpDoSave :
+                        np.save(self.semanticSequences[-1][DICT_SEQUENCE_LOCATION], self.semanticSequences[-1])
 
                 self.setListOfLoadedSemSequences()
             else :
-                QtGui.QMessageBox.warning(self, "Invalid Input Sequence", ("<p align='center'>This input sequence cannot be used for synthesis:<br><br>\"<b>"+message+ 
-                                                                           "</b>\"<br><br>Please return to the <i>Define Input Sequences</i> tab.</p>"))
+                QtGui.QMessageBox.warning(self, "Invalid Actor Sequence", ("<p align='center'>This actor sequence cannot be used for synthesis:<br><br>\"<b>"+message+ 
+                                                                           "</b>\"<br><br>Please return to the <i>Define Actor Sequences</i> tab.</p>"))
             
     def checkSemanticSequence(self, semanticSequence) :
         if DICT_DISTANCE_MATRIX_LOCATION not in semanticSequence.keys() :
@@ -3896,7 +4697,7 @@ class SemanticLoopingTab(QtGui.QWidget):
 
 
         self.loadedSequencesListModel = QtGui.QStandardItemModel(1, 1)
-        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded Input Sequences"])
+        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded Actor Sequences"])
         self.loadedSequencesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
         
         self.loadedSequencesListTable = QtGui.QTableView()
@@ -3914,7 +4715,6 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.loadedSequencesListTable.setItemDelegateForRow(0, self.loadedSequencesDelegateList[-1])
         self.loadedSequencesListTable.setModel(self.loadedSequencesListModel)
         
-        
         self.drawSpritesBox = QtGui.QCheckBox("Render Sprites")
         self.drawSpritesBox.setChecked(True)
         self.drawBBoxBox = QtGui.QCheckBox("Render Bounding Box")
@@ -3930,7 +4730,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         
         self.toggleDelaySpinBox = QtGui.QSpinBox()
         self.toggleDelaySpinBox.setRange(2, 300)
-        self.toggleDelaySpinBox.setValue(20)
+        self.toggleDelaySpinBox.setValue(6)
         self.toggleDelaySpinBox.setSingleStep(2)
         self.toggleDelaySpinBox.setToolTip("Number of frames to wait before toggling to desired semantic class using smoothstep")
         
@@ -3974,10 +4774,17 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.semanticsImportanceSpinBox.setValue(50.0)
         self.semanticsImportanceSpinBox.setToolTip("The higher the number the more important it is to show the semantics the user asked for")
         
+        self.propagationSigmaSpinBox = QtGui.QDoubleSpinBox()
+        self.propagationSigmaSpinBox.setRange(0.01, 100.0)
+        self.propagationSigmaSpinBox.setSingleStep(0.01)
+        self.propagationSigmaSpinBox.setValue(0.02)
+        self.propagationSigmaSpinBox.setButtonSymbols(QtGui.QAbstractSpinBox.NoButtons)
+        self.propagationSigmaSpinBox.setToolTip("The lower, the easier it is for frames to be given the same action label (the distance is less important)")
+        
         self.costsAlphaSpinBox = QtGui.QDoubleSpinBox()
         self.costsAlphaSpinBox.setRange(0.0, 1.0)
         self.costsAlphaSpinBox.setSingleStep(0.01)
-        self.costsAlphaSpinBox.setValue(0.5)
+        self.costsAlphaSpinBox.setValue(0.65)
         self.costsAlphaSpinBox.setToolTip("The higher, the more important the unaries over the pairwise")
         
         self.compatibilityAlphaSpinBox = QtGui.QDoubleSpinBox()
@@ -4009,7 +4816,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         
         self.startingSemanticsComboBox = QtGui.QComboBox()
         
-        self.addNewSemanticSequenceButton = QtGui.QPushButton("Add To Sequence")
+        self.addNewSemanticSequenceButton = QtGui.QPushButton("Add To Output")
         self.cancelNewSemanticSequenceButton = QtGui.QPushButton("Cancel")
         
         
@@ -4019,7 +4826,7 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.compatibilitySigmaSpinBox.setValue(0.1)
         self.compatibilitySigmaSpinBox.setButtonSymbols(QtGui.QAbstractSpinBox.NoButtons)
         self.compatibilitySigmaSpinBox.setToolTip("The higher, the wider the distribution used to compare frame feats (e.g. semantic vectors for label propagation-based cost)")
-                
+        
         self.compatibilitySigmaDividerSpinBox = QtGui.QSpinBox()
         self.compatibilitySigmaDividerSpinBox.setRange(1, 1000)
         self.compatibilitySigmaDividerSpinBox.setSingleStep(1)
@@ -4042,6 +4849,12 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.infoDialog.imageLabel.installEventFilter(self)
         self.infoDialog.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
         self.infoDialog.installEventFilter(self)
+        
+        self.optimizationDownsampleRateSpinBox = QtGui.QSpinBox()
+        self.optimizationDownsampleRateSpinBox.setRange(1, 4)
+        self.optimizationDownsampleRateSpinBox.setSingleStep(1)
+        self.optimizationDownsampleRateSpinBox.setValue(1)
+        self.optimizationDownsampleRateSpinBox.setToolTip("Performs the optimization using each frame or every second, third or fourth frame and getting increasingly faster")
         
         ## SIGNALS ##
         
@@ -4074,10 +4887,13 @@ class SemanticLoopingTab(QtGui.QWidget):
         self.addNewSemanticSequenceButton.clicked.connect(self.addNewSemanticSequence)
         self.cancelNewSemanticSequenceButton.clicked.connect(self.cancelNewSemanticSequence)
         
+        self.propagationSigmaSpinBox.editingFinished.connect(self.updateCompatibilityLabelsAndMatrices)
         self.compatibilitySigmaSpinBox.editingFinished.connect(self.updateCompatibilityMatrices)
         self.compatibilitySigmaDividerSpinBox.editingFinished.connect(self.updateCompatibilityMatrices)
         self.compatibilityTypeComboBox.currentIndexChanged.connect(self.updateCompatibilityMatrices)
         self.pathCompatibilityMinJumpLengthSpinBox.editingFinished.connect(self.updateCompatibilityMatrices)
+        
+        self.optimizationDownsampleRateSpinBox.editingFinished.connect(self.updatePreloadedTransitionMatrices)
         
         self.instancesShowIndicator.instanceDoShowChanged[int].connect(self.toggleInstancesDoShow)
         
@@ -4108,12 +4924,16 @@ class SemanticLoopingTab(QtGui.QWidget):
         sequenceControlsLayout.addWidget(self.autoSaveBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
         sequenceControlsLayout.addWidget(QtGui.QLabel("Transition Cost Delta"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
         sequenceControlsLayout.addWidget(self.toggleSpeedDeltaSpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
-        sequenceControlsLayout.addWidget(QtGui.QLabel("Action Importance"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
-        sequenceControlsLayout.addWidget(self.semanticsImportanceSpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
+#         sequenceControlsLayout.addWidget(QtGui.QLabel("Action Importance"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
+#         sequenceControlsLayout.addWidget(self.semanticsImportanceSpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
+        sequenceControlsLayout.addWidget(QtGui.QLabel("Propagation Sigma [/10]"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
+        sequenceControlsLayout.addWidget(self.propagationSigmaSpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
         sequenceControlsLayout.addWidget(QtGui.QLabel("a"), idx, 0, 1, 1, QtCore.Qt.AlignLeft);
         sequenceControlsLayout.addWidget(self.costsAlphaSpinBox, idx, 1, 1, 1, QtCore.Qt.AlignLeft);
         sequenceControlsLayout.addWidget(QtGui.QLabel("b"), idx, 2, 1, 1, QtCore.Qt.AlignRight);
         sequenceControlsLayout.addWidget(self.compatibilityAlphaSpinBox, idx, 3, 1, 1, QtCore.Qt.AlignRight); idx += 1
+        sequenceControlsLayout.addWidget(QtGui.QLabel("Optimization speed"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
+        sequenceControlsLayout.addWidget(self.optimizationDownsampleRateSpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
         sequenceControlsLayout.addWidget(QtGui.QLabel("Toogle Delay"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
         sequenceControlsLayout.addWidget(self.toggleDelaySpinBox, idx, 2, 1, 2, QtCore.Qt.AlignRight); idx += 1
         sequenceControlsLayout.addWidget(QtGui.QLabel("Extend Length"), idx, 0, 1, 2, QtCore.Qt.AlignLeft);
@@ -4128,8 +4948,10 @@ class SemanticLoopingTab(QtGui.QWidget):
         sequenceControls.setLayout(sequenceControlsLayout)
         
         
-        self.addNewSemanticSequenceControls = QtGui.QGroupBox("New Sequence Instance Controls")
-        self.addNewSemanticSequenceControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
+#         self.addNewSemanticSequenceControls = QtGui.QGroupBox("New Sequence Instance Controls")
+#         self.addNewSemanticSequenceControls.setStyleSheet("QGroupBox { margin: 5px; border: 2px groove gray; border-radius: 3px; } QGroupBox::title {left: 15px; top: -7px; font: bold;}")
+        self.addNewSemanticSequenceControls = QtGui.QDialog(self)
+        self.addNewSemanticSequenceControls.setWindowTitle("Add Instance to Output")
         addNewSemanticSequenceControlsLayout = QtGui.QGridLayout(); idx = 0
         addNewSemanticSequenceControlsLayout.addWidget(QtGui.QLabel("Offset (x, y)"), idx, 0, 1, 1, QtCore.Qt.AlignLeft)
         addNewSemanticSequenceControlsLayout.addWidget(self.sequenceXOffsetSpinBox, idx, 1, 1, 1, QtCore.Qt.AlignLeft)
@@ -4137,12 +4959,16 @@ class SemanticLoopingTab(QtGui.QWidget):
         addNewSemanticSequenceControlsLayout.addWidget(QtGui.QLabel("Scale (x, y)"), idx, 0, 1, 1, QtCore.Qt.AlignLeft)
         addNewSemanticSequenceControlsLayout.addWidget(self.sequenceXScaleSpinBox, idx, 1, 1, 1, QtCore.Qt.AlignLeft)
         addNewSemanticSequenceControlsLayout.addWidget(self.sequenceYScaleSpinBox, idx, 2, 1, 1, QtCore.Qt.AlignLeft); idx += 1
-        addNewSemanticSequenceControlsLayout.addWidget(QtGui.QLabel("Starting semantics"), idx, 0, 1, 1, QtCore.Qt.AlignLeft)
+        addNewSemanticSequenceControlsLayout.addWidget(QtGui.QLabel("Starting action"), idx, 0, 1, 1, QtCore.Qt.AlignLeft)
         addNewSemanticSequenceControlsLayout.addWidget(self.startingSemanticsComboBox, idx, 1, 1, 2, QtCore.Qt.AlignLeft); idx += 1
-        addNewSemanticSequenceControlsLayout.addWidget(self.cancelNewSemanticSequenceButton, idx, 0, 1, 1, QtCore.Qt.AlignLeft)
-        addNewSemanticSequenceControlsLayout.addWidget(self.addNewSemanticSequenceButton, idx, 1, 1, 2, QtCore.Qt.AlignRight); idx += 1
+        horizontalLine =  QtGui.QFrame()
+        horizontalLine.setFrameStyle(QtGui.QFrame.HLine)
+        horizontalLine.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+        addNewSemanticSequenceControlsLayout.addWidget(horizontalLine,idx, 0 , 1, 3); idx += 1
+        addNewSemanticSequenceControlsLayout.addWidget(self.cancelNewSemanticSequenceButton, idx, 0, 1, 1, QtCore.Qt.AlignCenter)
+        addNewSemanticSequenceControlsLayout.addWidget(self.addNewSemanticSequenceButton, idx, 1, 1, 2, QtCore.Qt.AlignCenter); idx += 1
         self.addNewSemanticSequenceControls.setLayout(addNewSemanticSequenceControlsLayout)
-        self.addNewSemanticSequenceControls.setVisible(False)
+#         self.addNewSemanticSequenceControls.setVisible(False)
         
         
         controlsLayout = QtGui.QVBoxLayout()

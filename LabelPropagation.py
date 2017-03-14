@@ -65,13 +65,13 @@ app = QtGui.QApplication(sys.argv)
 
 ## read frames from sequence of images
 # dataSet = "pendulum/"
-# dataSet = "ribbon2/"
+dataSet = "ribbon2/"
 # dataSet = "flag_blender/"
 # dataSet = "ribbon1_matted/"
 # dataSet = "little_palm1_cropped/"
 # dataSet = "ballAnimation/"
 # dataSet = "eu_flag_ph_left/"
-dataSet = "candle_wind/"
+# dataSet = "candle_wind/"
 outputData = dataPath+dataSet
 
 ## Find pngs in sample data
@@ -182,10 +182,11 @@ print np.max((np.abs(tmp3248/np.max(tmp3248)-tmp1616/np.max(tmp1616))))
 # <codecell>
 
 ## load precomputed distance matrix and filter for label propagation
-name = "vanilla_distMat"
-# name = "histcos_16x16_distMat"
+## SEARCH "naming conventions for precomputed stuff" IN JOURNAL FOR NAMING CONVENTIONS
+# name = "vanilla_distMat" ## use for comparison figure
+# name = "histcos_16x16_distMat" ## use for comparison figure
 # name = "hist2demd_32x48_distMat"
-# name = "hist2demd_16x16_distMat"
+# name = "hist2demd_16x16_distMat" ## use for comparison figure
 # name = "semantics_hog_rand50_distMat"
 # name = "semantics_hog_rand50_encodedfirst_distMat"
 # name = "semantics_hog_rand50_encodedlast_distMat"
@@ -194,29 +195,21 @@ name = "vanilla_distMat"
 # name = "semantics_hog_set150_distMat"
 # name = "semantics_hog_L2_set150_distMat"
 # name = "appearance_hog_rand150_distMat"
-# name = "appearance_hog_L2_rand150_distMat"
+# name = "appearance_hog_L2_rand150_distMat" ## use for comparison figure
 # name = "appearance_hog_set150_distMat"
 # name = "appearance_hog_L2_set150_distMat"
+name = "linear_regression_distMat"
 distanceMatrix = np.array(np.load(outputData + name + ".npy"), dtype=np.float)
 distanceMatrix /= np.max(distanceMatrix)
-filterSize = 2
+filterSize = 4
 if True :
     distMat = vtu.filterDistanceMatrix(distanceMatrix, filterSize, True)
 else :
     distMat = np.copy(distanceMatrix)
-figure(); imshow(distMat, interpolation='nearest')
+# figure(); imshow(distMat, interpolation='nearest')
 ## save for matlab to compute isomap
 # sio.savemat(name + ".mat", {"distMat":distMat})
 distances = np.array(np.copy(distMat), dtype=float)
-
-# <codecell>
-
-print distMat.shape
-figure(); imshow(distanceMatrix, interpolation='nearest')
-
-# <codecell>
-
-close('all')
 
 # <codecell>
 
@@ -246,21 +239,150 @@ else :
 #     fl[6:9, 2] = 1
 #     fl[9:, 3] = 1
 
-    initPoints = np.array([122, 501, 838, 1106]) -4
-    extraPoints = 16
-    labelledPoints = np.zeros((numClasses, extraPoints+1), dtype=np.int)
-    for i in xrange(0, len(initPoints)) :
-        labelledPoints[i, :] = range(initPoints[i]-extraPoints/2, initPoints[i]+extraPoints/2+1)
+    if True :
+        ## always same examples
+        initPoints = np.array([122, 501, 838, 1106]) -filterSize
+        extraPoints = 16
+        labelledPoints = np.zeros((numClasses, extraPoints+1), dtype=np.int)
+        for i in xrange(0, len(initPoints)) :
+            labelledPoints[i, :] = range(initPoints[i]-extraPoints/2, initPoints[i]+extraPoints/2+1)
 
-    fl = np.zeros((np.prod(labelledPoints.shape), numClasses))
-    for i in xrange(0, numClasses) :
-        fl[i*(extraPoints+1):(i+1)*(extraPoints+1), i] = 1
+        fl = np.zeros((np.prod(labelledPoints.shape), numClasses))
+        for i in xrange(0, numClasses) :
+            fl[i*(extraPoints+1):(i+1)*(extraPoints+1), i] = 1
+    
+    else :
+        ## randomized examples
+        numExamples = 40
+    #     initRanges = np.array([[72, 249],
+    #                            [280, 721],
+    #                            [762, 923],
+    #                            [938, 1270]])-filterSize
+    #     initRanges = np.array([[90, 230],
+    #                            [300, 700],
+    #                            [790, 900],
+    #                            [980, 1230]])-filterSize
+        initRanges = np.array([[100, 200],
+                               [350, 650],
+                               [800, 900],
+                               [1000, 1200]])-filterSize
+
+        labelledPoints = []
+        fl = np.empty([0, numClasses])
+        if True :
+            print "generating random points"
+            ## completely random
+            while len(labelledPoints) < numExamples :
+                newPoint = int(np.random.choice(np.arange(1280-filterSize*2), 1, replace=False))
+                if newPoint not in labelledPoints :
+                    doUse = False
+                    for currentRange in initRanges :
+                        if newPoint in np.arange(currentRange[0], currentRange[1]+1) :
+                            doUse = True
+                    if doUse :
+                        labelledPoints.append(newPoint)
+
+        else :
+            print "generating points in ranges"
+            ## from initRanges
+            for currentRange in initRanges :
+                labelledPoints.append(np.random.choice(np.arange(currentRange[0], currentRange[1]+1), numExamples/numClasses, replace=False))
+
+        labelledPoints = np.sort(np.array(labelledPoints).flatten())
+        for point in labelledPoints :
+            for currentRangeIdx, currentRange in enumerate(initRanges) :
+                if point in np.arange(currentRange[0], currentRange[1]+1) :
+    #                 print "meh", point, currentRangeIdx
+                    newFl = np.zeros([1, numClasses])
+                    newFl[0, currentRangeIdx] = 1
+                    fl = np.concatenate([fl, np.copy(newFl)])
+                    break
+
+        print "TRALAlsd", labelledPoints
     
 print numClasses, labelledPoints
 print fl
 
 ## order w to have labeled nodes at the top-left corner
 flatLabelled = np.ndarray.flatten(labelledPoints)
+
+distances = np.array(np.copy(distMat), dtype=float)
+
+orderedDist = np.copy(distances)
+sortedFlatLabelled = flatLabelled[np.argsort(flatLabelled)]
+sortedFl = fl[np.argsort(flatLabelled), :]
+print sortedFlatLabelled
+for i in xrange(0, len(sortedFlatLabelled)) :
+    #shift sortedFlatLabelled[i]-th row up to i-th row and adapt remaining rows
+    tmp = np.copy(orderedDist)
+    orderedDist[i, :] = tmp[sortedFlatLabelled[i], :]
+    orderedDist[i+1:, :] = np.vstack((tmp[i:sortedFlatLabelled[i], :], tmp[sortedFlatLabelled[i]+1:, :]))
+    #shift sortedFlatLabelled[i]-th column left to i-th column and adapt remaining columns
+    tmp = np.copy(orderedDist)
+    orderedDist[:, i] = tmp[:, sortedFlatLabelled[i]]
+    orderedDist[:, i+1:] = np.hstack((tmp[:, i:sortedFlatLabelled[i]], tmp[:, sortedFlatLabelled[i]+1:]))
+#     print len(sortedFlatLabelled)+sortedFlatLabelled[i]
+
+# gwv.showCustomGraph(distances)
+# gwv.showCustomGraph(orderedDist)
+
+## compute weights
+w, cumW = vtu.getProbabilities(orderedDist, 0.06, None, False)
+# gwv.showCustomGraph(w)
+# gwv.showCustomGraph(cumW)
+
+l = len(sortedFlatLabelled)
+n = orderedDist.shape[0]
+## compute graph laplacian
+L = np.diag(np.sum(w, axis=0)) - w
+# gwv.showCustomGraph(L)
+
+## propagate labels
+fu = np.dot(np.dot(-np.linalg.inv(L[l:, l:]), L[l:, 0:l]), sortedFl)
+
+## use class mass normalization to normalize label probabilities
+q = np.sum(sortedFl)+1
+fu_CMN = fu*(np.ones(fu.shape)*(q/np.sum(fu)))
+
+
+########## get label probabilities and plot ##########
+
+## add labeled points to propagated labels (as labelProbs) and plot
+print fu.shape
+# print fu_CMN
+
+print flatLabelled
+numClasses = fl.shape[-1]
+
+labelProbs = np.copy(np.array(fu))
+print labelProbs.shape
+for frame, i in zip(sortedFlatLabelled, np.arange(len(sortedFlatLabelled))) :
+    labelProbs = np.vstack((labelProbs[0:frame, :], sortedFl[i, :], labelProbs[frame:, :]))
+    
+labelProbs = np.concatenate([np.repeat(labelProbs[0, :].reshape([1, numClasses]), filterSize, axis=0), labelProbs, np.repeat(labelProbs[-1, :].reshape([1, numClasses]), filterSize, axis=0)])
+
+print labelProbs.shape
+
+if True :
+    fig1 = figure()
+    clrs = np.arange(0.0, 1.0+1.0/(numClasses-1), 1.0/(numClasses-1)).astype(np.string_) #['r', 'g', 'b', 'm', 'c', 'y', 'k', 'w']
+    stackplot(np.arange(len(labelProbs)), np.row_stack(tuple([i for i in labelProbs.T])), colors=['#e60000', '#00e600', '#0000e6', '#e600e6'])
+    
+    for pointIdx, point in enumerate(flatLabelled) :
+        plot([point+filterSize, point+filterSize], [0, 1.1], linewidth=1, c=np.array(['#e60000', '#00e600', '#0000e6', '#e600e6'])[int(np.argwhere(fl[pointIdx, :] == 1.0).flatten())])
+    
+#         for i in xrange(0, numClasses) :    
+#             for node in labelledPoints[i] :
+#                 figure(fig1.number); plot(np.repeat(node, 2), [0, 1.1], clrs[i])
+
+########## save the semantic labels into the sprite ##########
+
+## add labels for the first and last filterSize frames by copying the first and last labels
+#     finalLabels = np.concatenate((labelProbs[0, :].reshape((1, numClasses)).repeat(filterSize, axis=0),
+#                                   labelProbs,
+#                                   labelProbs[-1, :].reshape((1, numClasses)).repeat(filterSize, axis=0)))
+finalLabels = np.copy(labelProbs)
+print "READ ME", finalLabels.shape, distances.shape
 
 # <codecell>
 

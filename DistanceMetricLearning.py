@@ -1556,7 +1556,8 @@ print np.load(dataFolder + sampleData + "appearance_hog_L2_set150_distMat.npy")[
 
 # <codecell>
 
-labelledPairs = np.load("appearanceLabelledPairs_setchoice.npy")
+labelledPairs = np.load("appearanceLabelledPairs.npy")
+print labelledPairs[:, :]
 
 # <codecell>
 

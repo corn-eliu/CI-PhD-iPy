@@ -56,30 +56,43 @@ TR_IDX = 1
 BR_IDX = 2
 BL_IDX = 3
 
-dataPath = "/home/ilisescu/PhD/data/"
-dataSet = "havana/"
-# dataPath = "/media/ilisescu/Data1/PhD/data/"
+# dataPath = "/home/ilisescu/PhD/data/"
+# dataSet = "havana/"
+dataPath = "/media/ilisescu/Data1/PhD/data/"
 # dataSet = "clouds_subsample10/"
 # dataSet = "theme_park_cloudy/"
-# dataSet = "theme_park_sunny/"
+dataSet = "theme_park_sunny/"
+
+# <codecell>
+
+Image.fromarray(window.undistortedBgImage.astype(np.uint8)).save("/media/ilisescu/Data1/PhD/data/theme_park_sunny/medianUndistorted.png")
 
 # <codecell>
 
 ## load 
 trackedSprites = []
-for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy")) :
+preloadedSpritePatches = []
+for sprite in np.sort(glob.glob(dataPath + dataSet + "sprite*.npy"))[0:1] :
     trackedSprites.append(np.load(sprite).item())
+    if DICT_PATCHES_LOCATION in trackedSprites[-1].keys() :
+        preloadedSpritePatches.append(np.load(trackedSprites[-1][DICT_PATCHES_LOCATION]).item())
+    else :
+        preloadedSpritePatches.append(np.load(dataPath+dataSet+"preloaded_patches-"+trackedSprites[-1][DICT_SEQUENCE_NAME]+".npy").item())
     print trackedSprites[-1][DICT_SEQUENCE_NAME], DICT_FOOTPRINTS in trackedSprites[-1].keys()
 
 # <codecell>
 
-def line2lineIntersection(line1, line2) :
+def line2lineIntersection(line1, line2, doShowPlot=False) :
+    """ x1, y1, x2, y2 = line1
+        x3, y3, x4, y4 = line2 """
     x1, y1, x2, y2 = line1
     x3, y3, x4, y4 = line2
     denominator = (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4)
     if denominator != 0 :
         Px = ((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/denominator
         Py = ((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/denominator
+        if doShowPlot :
+            figure(); plot([x1, x2], [y1, y2], c='r'), plot([x3, x4], [y3, y4], c='g'), scatter([Px], [Py], c='b', marker='x')
         return np.array([Px, Py])
     else :
         raise Exception("lines are parallel")
@@ -208,7 +221,8 @@ def printMatrix(mat, useQt = True) :
 
 # <codecell>
 
-preloadedSpritePatches = list(np.load("/media/ilisescu/Data1/PhD/data/" + dataSet + "preloadedSpritePatches.npy"))
+# preloadedSpritePatches = list(np.load("/media/ilisescu/Data1/PhD/data/" + dataSet + "preloadedSpritePatches.npy"))
+# preloadedSpritePatches = []
 
 # <codecell>
 
@@ -453,7 +467,7 @@ class Window(QtGui.QWidget):
         self.trajectoryPositionDelta = np.array([[0, 0]])
         
         self.distortionParameter = -0.13
-        self.distortionRatio = 10.0
+        self.distortionRatio = -19.0
         
 #         self.initLines = np.array([[  281.3,   472. ,    66. ,   251.7],
 #                                [  458.7,   329.7,   191.7,   224.3],
@@ -467,15 +481,21 @@ class Window(QtGui.QWidget):
                                    [458.7, 329.7, 175.7, 220.3],
                                    [401.0, 461.0, 891.5, 170.0],
                                    [866.7, 369.0, 962.7, 194.0]], dtype=float)
+        
+        self.initLines = np.array([[922.3, 574.0, 154.0, 367.7],
+                                   [943.7, 400.7, 435.7, 331.3],
+                                   [94.0, 414.0, 728.5, 327.0],
+                                   [463.7, 509.0, 934.7, 362.0]], dtype=float)
+
 
         self.lines = np.copy(self.initLines)
         
         self.defaultSettings = {'bboxWidthSpinBox':180,
                                 'bboxHeightSpinBox':60, 
                                 'unitSquareWidthSpinBox':500,
-                                'unitSquareHeightSpinBox':300,
-                                'unitSquareXSpinBox':4000,
-                                'unitSquareYSpinBox':2500,
+                                'unitSquareHeightSpinBox':500,
+                                'unitSquareXSpinBox':2500,
+                                'unitSquareYSpinBox':1500,
                                 'trajectorySmoothnessSpinBox':15,
                                 'orientationsSmoothnessSpinBox':60,
                                 'trajectoryWidthSpinBox':0,
@@ -495,7 +515,8 @@ class Window(QtGui.QWidget):
         
         self.topDownScaling = np.eye(2)*0.1
         
-        self.cameraMatrix = np.array([[702.73602295, 0, 640], [0, 702.73602295, 320], [0, 0, 1]])
+#         self.cameraMatrix = np.array([[702.73602295, 0, 640], [0, 702.73602295, 320], [0, 0, 1]])
+        self.cameraMatrix = np.array([[1275.186144, 0, 480], [0, 1275.186144, 270], [0, 0, 1]])
         self.undistortParameters = np.array([self.distortionParameter, self.distortionParameter*self.distortionRatio/100.0, 0.0, 0.0, 0.0])
         
         ## plane grid points
@@ -556,7 +577,12 @@ class Window(QtGui.QWidget):
         self.undistortedGridPoints = self.undistortedGridPoints[0:2, :].T
         
         ## update grid points for original view
-        self.originalGridPoints = cv2.undistortPoints(self.undistortedGridPoints.reshape((1, len(self.undistortedGridPoints), 2)),
+        # only render points that are inside image view
+        validPoints = np.all(np.concatenate([np.all(self.undistortedGridPoints >= 0, axis=1).reshape([len(self.undistortedGridPoints), 1]),
+                                             (self.undistortedGridPoints[:, 0] <= self.undistortedBgImage.shape[1]*1.1).reshape([len(self.undistortedGridPoints), 1]),
+                                             (self.undistortedGridPoints[:, 1] <= self.undistortedBgImage.shape[0]*1.1).reshape([len(self.undistortedGridPoints), 1])], axis=1), axis=1)
+        self.originalGridPoints = self.undistortedGridPoints[validPoints, :]
+        self.originalGridPoints = cv2.undistortPoints(self.originalGridPoints.reshape((1, len(self.originalGridPoints), 2)),
                                                       self.cameraMatrix, -self.undistortParameters, P=self.cameraMatrix)[0, :, :]
         
         ## update top down background image
@@ -565,8 +591,8 @@ class Window(QtGui.QWidget):
         
         ## update top down trajectory
         self.topDownTrajectory = np.dot(np.linalg.inv(self.homography), np.array([self.undistortedTrajectory[:, 0], 
-                                                                                    self.undistortedTrajectory[:, 1], 
-                                                                                    np.ones(len(self.undistortedTrajectory))]))
+                                                                                  self.undistortedTrajectory[:, 1], 
+                                                                                  np.ones(len(self.undistortedTrajectory))]))
         self.topDownTrajectory /= self.topDownTrajectory[-1, :]
         self.topDownTrajectory = self.topDownTrajectory[0:2, :].T
         
@@ -732,7 +758,7 @@ class Window(QtGui.QWidget):
         ## show the ultimate output from all of this 
         else :
             ## get the sprite patch and give it to original image label
-            self.originalImageLabel.setSpritePatch(preloadedSpritePatches[self.spriteIdx][self.currentFrame])
+            self.originalImageLabel.setSpritePatch(preloadedSpritePatches[self.spriteIdx][np.sort(preloadedSpritePatches[self.spriteIdx].keys())[self.currentFrame]])
             
             ## show the distorted bg image
             qim = QtGui.QImage(self.originalBgImage.data, self.originalBgImage.shape[1], 
@@ -1151,6 +1177,10 @@ class Window(QtGui.QWidget):
 
 # <codecell>
 
+print window.distortionRatio
+
+# <codecell>
+
 window = Window()
 window.show()
 app.exec_()
@@ -1161,16 +1191,19 @@ printMatrix(window.lines, False)
 
 # <codecell>
 
+############################## HAVANA ##############################
 ## CODE THAT FINDS THE TRANSFORMATION TO MOVE THE IMAGE SPACE INTERSECTION RECTANGLE TO AN ARBITRARY POINT IN IMAGE SPACE AFTER FINDING THE HOMOGRAPHY (could make this part of the UI)
 figure(); imshow(window.undistortedBgImage)
-plot(window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], c="magenta")
+xlim([0, 1279])
+ylim([719, 0])
+# plot(window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], c="magenta")
 
 originCornerIdx = 0
 rotateAboutZ = 0#np.pi
 flip = False
 # imageOriginPoint = window.rectangleCorners[originCornerIdx, :2]
 imageOriginPoint = np.array([713.0, 275.0])
-scatter(imageOriginPoint[0], imageOriginPoint[1], c="red", marker="x", s=50)
+# scatter(imageOriginPoint[0], imageOriginPoint[1], c="red", marker="x", s=50)
 
 worldOriginPoint = np.dot(np.linalg.inv(window.homography), np.array([[imageOriginPoint[0], imageOriginPoint[1], 1]]).T)
 worldOriginPoint /= worldOriginPoint[-1, 0]
@@ -1185,7 +1218,46 @@ print transform
 imageAdjustedRectangleCorners = np.dot(np.dot(window.homography, transform), worldRectangleCorners)
 imageAdjustedRectangleCorners /= imageAdjustedRectangleCorners[-1, :]
 print imageAdjustedRectangleCorners
-plot(imageAdjustedRectangleCorners[0, :], imageAdjustedRectangleCorners[1, :], c="blue")
+plot(imageAdjustedRectangleCorners[0, [0, 1, 2, 3, 0]], imageAdjustedRectangleCorners[1, [0, 1, 2, 3, 0]], c="yellow", linewidth=3)
+scatter(np.average(imageAdjustedRectangleCorners[0, :]), np.average(imageAdjustedRectangleCorners[1, :]), c="yellow", marker="x", s=50, linewidth=3)
+printMatrix(np.dot(window.homography, transform), False)
+printMatrix(imageAdjustedRectangleCorners, False)
+
+# <codecell>
+
+############################## THEME PARK SUNNY ##############################
+## CODE THAT FINDS THE TRANSFORMATION TO MOVE THE IMAGE SPACE INTERSECTION RECTANGLE TO AN ARBITRARY POINT IN IMAGE SPACE AFTER FINDING THE HOMOGRAPHY (could make this part of the UI)
+figure(); imshow(window.undistortedBgImage)
+xlim([0, window.undistortedBgImage.shape[1]-1])
+ylim([window.undistortedBgImage.shape[0]-1, 0])
+# plot(window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], c="magenta")
+
+originCornerIdx = 0
+rotateAboutZ = 0#np.pi
+flip = False
+# imageOriginPoint = window.rectangleCorners[originCornerIdx, :2]
+imageOriginPoint = np.array([702.0, 395.0])
+# scatter(imageOriginPoint[0], imageOriginPoint[1], c="red", marker="x", s=50)
+
+worldOriginPoint = np.dot(np.linalg.inv(window.homography), np.array([[imageOriginPoint[0], imageOriginPoint[1], 1]]).T)
+worldOriginPoint /= worldOriginPoint[-1, 0]
+worldRectangleCorners = np.dot(np.linalg.inv(window.homography), np.array([window.rectangleCorners[:, 0], window.rectangleCorners[:, 1], np.ones(len(window.rectangleCorners))]))
+worldRectangleCorners /= worldRectangleCorners[-1, :]
+worldRectangleOrigin = (worldRectangleCorners[:, 2]-worldRectangleCorners[:, originCornerIdx])/2+worldRectangleCorners[:, originCornerIdx]
+# worldRectangleOrigin = worldRectangleCorners[:, originCornerIdx]
+print worldRectangleOrigin
+transform = np.array([[np.cos(rotateAboutZ), -np.sin(rotateAboutZ), worldOriginPoint[0, 0]-worldRectangleOrigin[0]],
+                      [np.sin(rotateAboutZ), np.cos(rotateAboutZ), worldOriginPoint[1, 0]-worldRectangleOrigin[1]],
+                      [0, 0, 1]])
+print worldRectangleCorners.T[:, :-1]
+print transform
+# imageAdjustedRectangleCorners = np.dot(np.dot(transform, window.homography), worldRectangleCorners)
+imageAdjustedRectangleCorners = np.dot(np.dot(window.homography, transform), worldRectangleCorners)
+imageAdjustedRectangleCorners /= imageAdjustedRectangleCorners[-1, :]
+print imageAdjustedRectangleCorners
+plot(imageAdjustedRectangleCorners[0, [0, 1, 2, 3, 0]], imageAdjustedRectangleCorners[1, [0, 1, 2, 3, 0]], c="yellow", linewidth=3)
+centerImageSpace = line2lineIntersection(imageAdjustedRectangleCorners[0:2, [0, 2]].T.flatten(), imageAdjustedRectangleCorners[0:2, [1, 3]].T.flatten())
+scatter(centerImageSpace[0], centerImageSpace[1], c="yellow", marker="x", s=50, linewidth=3)
 printMatrix(np.dot(window.homography, transform), False)
 printMatrix(imageAdjustedRectangleCorners, False)
 
@@ -1254,6 +1326,7 @@ K = np.array([[640.0, 0, 320.0],
 
 # <codecell>
 
+############################## HAVANA ##############################
 ## my case
 # points3D = np.array([[0.0, 0.0, 1.0, 1.0],
 #                      [0.0, 1.0, 1.0, 0.0],
@@ -1273,9 +1346,18 @@ points3D = np.array([[-squareAspectRatio/2, -squareAspectRatio/2, squareAspectRa
 # points2D = np.array([[385.535344098, 556.727428769, 807.633684593, 672.437698898],
 #                      [470.196029278, 368.396970008, 467.443859012, 692.770501836],
 #                      [1.0, 1.0, 1.0, 1.0]]) ### middle of intersection
+
+
+## THIS WAS THE LAST ONE I USED TILL I STARTED USING NUKE TO TRACK THE CARS AND REALISED THE HOMOGRAPHY IS PRETTY BAD SINCE THE BUS CUBOID LOOKS CRAP WHEN IT'S FAR FROM THE CAMERA
 points2D = np.array([[713.0, 759.017668294, 918.283494055, 896.687484574],
                      [275.0, 247.835288427, 272.113391191, 310.853978155],
                      [1.0, 1.0, 1.0, 1.0]]) ### using the corner of the intersection
+## ACTUALLY, CBA TO DO THIS: TRYING TO FIX THE PROBLEM MENTIONED ABOVE
+points2D = np.array([[713.0, 765.50549139, 939.776821333, 910.970729008],
+                     [275.0, 242.578824415, 276.90155592, 323.577194167],
+                     [1.0, 1.0, 1.0, 1.0]])
+
+
 # points2D = np.array([[200.0, 200.0, 300.0, 300.0],
 #                      [600.0, 500.0, 500.0, 600.0],
 #                      [1.0, 1.0, 1.0, 1.0]]) ### some random square to check if homography just scales
@@ -1288,7 +1370,22 @@ K = np.array([[702.736053, 0, 640.0],
 
 # <codecell>
 
-## use p3p  Gao from opencv
+############################## THEME PARK SUNNY ##############################
+squareAspectRatio = 500.0/600.0
+points3D = np.array([[-squareAspectRatio/2, -squareAspectRatio/2, squareAspectRatio/2, squareAspectRatio/2],
+                     [-.5, .5, .5, -.5],
+                     [0.0, 0.0, 0.0, 0.0],
+                     [1.0, 1.0, 1.0, 1.0]])
+points2D = np.array([[387.749093933, 666.544115778, 983.786600117, 778.063426165],
+                     [397.85205334, 352.220397229, 392.442583622, 486.774982579],
+                     [1.0, 1.0, 1.0, 1.0]])
+K = np.array([[1275.186144, 0, 480.0],
+              [0, 1275.186144, 270.0],
+              [0, 0, 1]])
+
+# <codecell>
+
+## use p3p  Gao from opencv for HAVANA
 objectPoints = np.float64(points3D[:-1, :].T).reshape([points3D.shape[1], 1, 3])
 imagePoints = np.float64(points2D[:-1, :].T).reshape([points2D.shape[1], 1, 2])
 cameraMatrix = np.float64(K)
@@ -1310,8 +1407,95 @@ reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
 print reprojectedPoints
 print imagePoints[:, 0, :].T
 print cv2.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)[0][:, 0, :].T
-printMatrix(T, False)
-printMatrix(np.linalg.inv(T), False)
+printMatrix(T, False) ## THIS BE THE EXTRINSICS
+printMatrix(np.linalg.inv(T), False) ## THIS BE THE CAMERA MODEL MAT
+
+# <codecell>
+
+## use p3p  Gao from opencv for THEME PARK SUNNY
+objectPoints = np.float64(points3D[:-1, :].T).reshape([points3D.shape[1], 1, 3])
+imagePoints = np.float64(points2D[:-1, :].T).reshape([points2D.shape[1], 1, 2])
+cameraMatrix = np.float64(K)
+distCoeffs = np.zeros([5, 1])
+## distortion should be 0 as the imagePoints are already defined in an undistorted image
+# distCoeffs[0] = -0.19
+# distCoeffs[1] = -0.19
+
+_, rvec, tvec = cv2.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, flags=cv2.CV_P3P)
+# _, rvec, tvec = cv2.solvePnP(np.concatenate([objectPoints, np.zeros([1, 1, 3])], axis=0),
+#                              np.concatenate([imagePoints, imageOriginPoint.reshape([1, 1, 2])], axis=0), cameraMatrix, distCoeffs, flags=cv2.CV_ITERATIVE)
+rotMat, _ = cv2.Rodrigues(rvec)
+
+T = np.concatenate([rotMat, tvec], axis=1)
+T = np.concatenate([T, np.array([[0, 0, 0, 1]])], axis=0)
+
+reprojectedPoints = np.dot(T, points3D)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+reprojectedPoints = np.dot(cameraMatrix, reprojectedPoints)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+print reprojectedPoints
+print imagePoints[:, 0, :].T
+print cv2.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)[0][:, 0, :].T
+printMatrix(T, False) ## THIS BE THE EXTRINSICS
+printMatrix(np.linalg.inv(T), False) ## THIS BE THE CAMERA MODEL MAT
+
+# <codecell>
+
+inverseT = np.linalg.inv(np.dot(K, T[:-1, [0, 1, 3]]))
+print inverseT
+print cameraMatrix
+print K
+
+# <codecell>
+
+## use p3p  Gao from opencv for THEME PARK SUNNY
+objectPoints = np.float64(points3D[:-1, :].T).reshape([points3D.shape[1], 1, 3])
+imagePoints = np.float64(points2D[:-1, :].T).reshape([points2D.shape[1], 1, 2])
+cameraMatrix = np.float64(K)
+distCoeffs = np.zeros([5, 1])
+## distortion should be 0 as the imagePoints are already defined in an undistorted image
+# distCoeffs[0] = -0.19
+# distCoeffs[1] = -0.19
+
+if False :
+    _, rvec, tvec = cv2.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, flags=cv2.CV_P3P)
+else :
+    objectPoints = np.concatenate([objectPoints, np.zeros([1, 1, 3])], axis=0)
+    imagePoints = np.concatenate([imagePoints, imageOriginPoint.reshape([1, 1, 2])], axis=0)
+    _, rvec, tvec = cv2.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, flags=cv2.CV_ITERATIVE)
+    
+rotMat, _ = cv2.Rodrigues(rvec)
+
+T = np.concatenate([rotMat, tvec], axis=1)
+T = np.concatenate([T, np.array([[0, 0, 0, 1]])], axis=0)
+
+reprojectedPoints = np.dot(T, np.concatenate([points3D, np.array([[0.0], [0], [0], [1]])], axis=1))
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+reprojectedPoints = np.dot(cameraMatrix, reprojectedPoints)
+reprojectedPoints = reprojectedPoints[:-1, :]/reprojectedPoints[-1, :]
+print reprojectedPoints
+print imagePoints[:, 0, :].T
+print cv2.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)[0][:, 0, :].T
+printMatrix(T, False) ## THIS BE THE EXTRINSICS
+printMatrix(np.linalg.inv(T), False) ## THIS BE THE CAMERA MODEL MAT
+
+figure(); imshow(window.undistortedBgImage)
+xlim([0, window.undistortedBgImage.shape[1]-1])
+ylim([window.undistortedBgImage.shape[0]-1, 0])
+plot(reprojectedPoints[0, [0, 1, 2, 3, 0]], reprojectedPoints[1, [0, 1, 2, 3, 0]], c="yellow", linewidth=3)
+plot(imagePoints[:, 0, :].T[0, [0, 1, 2, 3, 0]], imagePoints[:, 0, :].T[1, [0, 1, 2, 3, 0]], c="magenta", linewidth=2)
+scatter(reprojectedPoints[0, -1], reprojectedPoints[1, -1], c="yellow", marker="x", s=50, linewidth=3)
+scatter(imagePoints[:, 0, :].T[0, -1], imagePoints[:, 0, :].T[1, -1], c="magenta", marker="x", s=50, linewidth=2)
+
+# <codecell>
+
+print np.dot(T, np.array([[0.0], [0], [0], [1]]))
+newT = np.dot(K, T[:-1, [0, 1, 3]])
+point = np.array([[0], [0], [1.0]])
+print np.dot(newT, point)/np.dot(newT, point)[-1, 0]
+#np.array([702.0, 395.0])
+centerPoint = np.array([[702.0, 395.0, 1.0]]).T
+print np.dot(np.linalg.inv(newT), centerPoint)/np.dot(np.linalg.inv(newT), centerPoint)[-1, 0]
 
 # <codecell>
 

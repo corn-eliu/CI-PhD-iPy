@@ -4,6 +4,7 @@
 # <codecell>
 
 # Imports and defines
+# %pylab
 import numpy as np
 import sys
 import time
@@ -24,6 +25,7 @@ from PIL import Image
 from PySide import QtCore, QtGui
 
 import VideoTexturesUtils as vtu
+import GraphWithValues as gwv
 
 
 DICT_SEQUENCE_NAME = 'semantic_sequence_name'
@@ -38,6 +40,7 @@ DICT_ICON_FRAME_KEY = "icon_frame_key"
 DICT_ICON_SIZE = "icon_size"
 DICT_REPRESENTATIVE_COLOR = 'representative_color'
 DICT_FRAME_SEMANTICS = "semantics_per_frame"
+DICT_SEMANTICS_NAMES = "semantics_names"
 DICT_NUM_SEMANTICS = "number_of_semantic_classes"
 DICT_PATCHES_LOCATION = "sequence_preloaded_patches_location"
 DICT_TRANSITION_COSTS_LOCATION = "sequence_precomputed_transition_costs_location"
@@ -61,6 +64,124 @@ ROTATE_BBOX_HANDLE_SIZE = 10
 
 ## used for enlarging bbox used to decide size of patch around it (percentage)
 PATCH_BORDER = 0.4
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/drumming2/semantic_sequence-foot1.npy").item()
+# distMat = np.load(tmp[DICT_DISTANCE_MATRIX_LOCATION])
+# gwv.showCustomGraph(distMat)
+# filterSize = 4; minJumpSize = 12; sigmaMultiplier = 0.5; onlyBackwards = False;
+# transMat = computeTransitionMatrix(distMat, filterSize, 0.15, minJumpSize, onlyBackwards, False, sigmaMultiplier)
+# gwv.showCustomGraph(transMat)
+# gwv.showCustomGraph(np.load(tmp[DICT_TRANSITION_COSTS_LOCATION]))
+
+# <codecell>
+
+# tmp = np.load("/home/ilisescu/PhD/data/synthesisedSequences/drumming_new/synthesised_sequence.npy").item()
+# tmp['used_semantic_sequences'] = ["/media/ilisescu/Data1/PhD/data/drumming2/semantic_sequence-left_hand1.npy"]
+# print tmp['used_semantic_sequences']
+# tmp['sequence_instances'][0]['semantic_sequence_idx'] = 0
+# np.save("/home/ilisescu/PhD/data/synthesisedSequences/drumming_new/synthesised_sequence.npy", tmp)
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/drumming2/semantic_sequence-left_hand1.npy").item()
+# print tmp[DICT_LABELLED_FRAMES]
+# print tmp[DICT_NUM_EXTRA_FRAMES]
+# tmp[DICT_LABELLED_FRAMES] = [tmp[DICT_LABELLED_FRAMES][0], tmp[DICT_LABELLED_FRAMES][1],
+#                              tmp[DICT_LABELLED_FRAMES][2], tmp[DICT_LABELLED_FRAMES][3][0:4], [560, 605]]
+# tmp[DICT_NUM_EXTRA_FRAMES] = [tmp[DICT_NUM_EXTRA_FRAMES][0], tmp[DICT_NUM_EXTRA_FRAMES][1],
+#                               tmp[DICT_NUM_EXTRA_FRAMES][2], tmp[DICT_NUM_EXTRA_FRAMES][3][0:4], tmp[DICT_NUM_EXTRA_FRAMES][4][0:2]]
+# print 
+# print tmp[DICT_LABELLED_FRAMES]
+# print tmp[DICT_NUM_EXTRA_FRAMES]
+# np.save(tmp[DICT_SEQUENCE_LOCATION], tmp)
+
+# <codecell>
+
+# distMat = np.load("/media/ilisescu/Data1/PhD/data/toy_quick/overlap_normalization_distMat-toy_quick.npy")
+# gwv.showCustomGraph(distMat)
+# gwv.showCustomGraph(distMat[::3, ::3])
+
+# <codecell>
+
+# distMat = np.load("/media/ilisescu/Data1/PhD/data/toy_quick/overlap_normalization_distMat-toy_quick.npy")
+# gwv.showCustomGraph(distMat)
+# tmp = computeTransitionMatrix(distMat, 0, 0.1, 7, False, False, 0.1)
+# gwv.showCustomGraph(tmp)
+# figure(); imshow(np.load("/media/ilisescu/Data1/PhD/data/toy_quick/transition_costs_no_normalization-toy_quick.npy"))
+
+# <codecell>
+
+# distMat = np.load(np.load("/media/ilisescu/Data1/PhD/data/wave1/semantic_sequence-aron1.npy").item()[DICT_DISTANCE_MATRIX_LOCATION])
+# gwv.showCustomGraph(distMat)
+# tmp = computeTransitionMatrix(distMat, 4, 0.1, 20, False, False, 0.06)
+# gwv.showCustomGraph(tmp)
+# gwv.showCustomGraph(np.roll(np.roll(tmp, -1, 1)[::1, ::1], 1, 1))
+# tmp = computeTransitionMatrix(distMat[::2, ::2], 4/2, 0.1, 20/2, False, False, 0.06)
+# gwv.showCustomGraph(tmp)
+# origTransitionMatrix = np.load(np.load("/media/ilisescu/Data1/PhD/data/wave1/semantic_sequence-aron1.npy").item()[DICT_TRANSITION_COSTS_LOCATION])
+# gwv.showCustomGraph(origTransitionMatrix)
+# downsampledTransitionMatrix = np.roll(np.roll(origTransitionMatrix, -1, 1)[::2, ::2], 1, 1)
+# gwv.showCustomGraph(downsampledTransitionMatrix)
+
+# <codecell>
+
+# distMat = np.load("/media/ilisescu/Data1/PhD/data/drumming2/overlap_normalization_distMat-left_hand1.npy")
+# gwv.showCustomGraph(distMat)
+# tmp = computeTransitionMatrix(distMat, 4, 0.1, 20, False, False, 0.003)
+# gwv.showCustomGraph(tmp)
+# np.save("/media/ilisescu/Data1/PhD/data/drumming2/transition_costs_no_normalization-left_hand1.npy", tmp)
+# figure(); imshow(np.load("/media/ilisescu/Data1/PhD/data/drumming2/transition_costs_no_normalization-left_hand1.npy"))
+
+# <codecell>
+
+# np.save("/media/ilisescu/Data1/PhD/data/toy_quick/transition_costs_no_normalization-toy_quick.npy", tmp)
+# figure(); imshow(np.load("/media/ilisescu/Data1/PhD/data/drumming2/transition_costs_no_normalization-left_hand1.npy"))
+
+# <codecell>
+
+# baseLoc = "/media/ilisescu/Data1/PhD/data/drumming1/"
+# filterSize = 4; threshPercentile = 0.1; minJumpLength = 10; onlyBackwards = True; sigmaMultiplier = 0.06
+baseLoc = "/media/ilisescu/Data1/PhD/data/drumming2/"
+filterSize = 0; threshPercentile = 0.1; minJumpLength = 12; onlyBackwards = True; sigmaMultiplier = 0.1
+if False :
+    distMat = np.load(baseLoc+"overlap_normalization_distMat-left_hand.npy")
+    # gwv.showCustomGraph(distMat)
+    tmp = computeTransitionMatrix(distMat, filterSize, threshPercentile, minJumpLength, onlyBackwards, False, sigmaMultiplier)
+    gwv.showCustomGraph(tmp)
+    np.save(baseLoc+"transition_costs_no_normalization-left_hand.npy", tmp)
+    # figure(); imshow(np.load("/media/ilisescu/Data1/PhD/data/drumming1/transition_costs_no_normalization-left_hand.npy"))
+
+#     distMat = np.load(baseLoc+"overlap_normalization_distMat-right_hand.npy")
+#     # gwv.showCustomGraph(distMat)
+#     tmp = computeTransitionMatrix(distMat, filterSize, threshPercentile, minJumpLength, onlyBackwards, False, sigmaMultiplier)
+#     gwv.showCustomGraph(tmp)
+#     np.save(baseLoc+"transition_costs_no_normalization-right_hand.npy", tmp)
+    # figure(); imshow(np.load("/media/ilisescu/Data1/PhD/data/drumming1/transition_costs_no_normalization-left_hand.npy"))
+
+# <codecell>
+
+# np.save("/media/ilisescu/Data1/PhD/data/drumming1/transition_costs_no_normalization-left_hand.npy", tmp)
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/wave1/semantic_sequence-aron1.npy").item()
+# print tmp.keys()
+# print
+# print tmp['issue_command_type']
+# print tmp['issue_command_binding']
+
+# <codecell>
+
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/toy/semantic_sequence-toy1.npy").item()
+# tmp = np.load("/media/ilisescu/Data1/PhD/data/havana/semantic_sequence-black_car1.npy").item()
+# print tmp[DICT_LABELLED_FRAMES]
+# tmp = np.load("/home/ilisescu/PhD/data/havana/semantic_sequence-black_car1.npy").item()
+# tmp[DICT_LABELLED_FRAMES] = [[361], [0], [246]]
+# print tmp[DICT_LABELLED_FRAMES]
+# # print np.sort(tmp[DICT_FRAMES_LOCATIONS].keys())
+# # np.save(tmp[DICT_SEQUENCE_LOCATION], tmp)
 
 # <codecell>
 
@@ -1217,14 +1338,14 @@ class AddFramesToSequenceDialog(QtGui.QDialog):
         self.MAX_FRAME_WIDTH = 250.0
         
         self.frameLocs = frameLocs
-        self.numFrames = len(self.frameLocs)
+        self.numOfFrames = len(self.frameLocs)
         self.scale = 1.0
         self.bboxPoly = QtGui.QPolygonF()
         self.frameIdx = 0
         self.startFrame = self.frameIdx
-        self.endFrame = self.numFrames-1
+        self.endFrame = self.numOfFrames-1
         
-        if self.numFrames > 0 :
+        if self.numOfFrames > 0 :
             self.scale = np.min([1.0, self.MAX_FRAME_WIDTH/np.array(Image.open(self.frameLocs[0])).shape[1]])
             
             for p in bbox :
@@ -1265,7 +1386,7 @@ class AddFramesToSequenceDialog(QtGui.QDialog):
         super(QtGui.QLabel, frameLabel).paintEvent(event)
         frameLabel.paintEvent(event)
         
-        if self.numFrames > 0 :
+        if self.numOfFrames > 0 :
             painter = QtGui.QPainter(frameLabel)
             painter.setRenderHints(QtGui.QPainter.Antialiasing)
             
@@ -1281,9 +1402,9 @@ class AddFramesToSequenceDialog(QtGui.QDialog):
             painter.end()
             
     def showFrame(self, idx) :
-        if idx >= 0 and idx < self.numFrames :
+        if idx >= 0 and idx < self.numOfFrames :
             self.frameIdx = idx
-            self.image = np.ascontiguousarray(Image.open(self.frameLocs[self.frameIdx]))[:, :, :3]
+            self.image = np.ascontiguousarray(np.array(Image.open(self.frameLocs[self.frameIdx]))[:, :, :3])
             img = QtGui.QImage(self.image.data, self.image.shape[1], self.image.shape[0], self.image.strides[0], QtGui.QImage.Format_RGB888)
             
             self.frameLabel.setPixmap(QtGui.QPixmap.fromImage(img.scaledToWidth(self.MAX_FRAME_WIDTH)))
@@ -1304,10 +1425,10 @@ class AddFramesToSequenceDialog(QtGui.QDialog):
         self.frameIdxSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
         self.frameIdxSlider.setSizePolicy(QtGui.QSizePolicy.MinimumExpanding, QtGui.QSizePolicy.Minimum)
         self.frameIdxSlider.setMinimum(0)
-        self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames]))
+        self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames-1]))
         
         self.frameIdxSpinBox = QtGui.QSpinBox()
-        self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames]))
+        self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames-1]))
         self.frameIdxSpinBox.setSingleStep(1)
         
         self.buttonBox = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel);
@@ -1490,12 +1611,15 @@ class ComputeDistanceMatrix(LongOperationClass) :
     
     def run(self, semanticSequence, distSaveLocation, costSaveLocation, isMovingSprite, sigmaMultiplier) :
         numFrames = len(semanticSequence[DICT_FRAMES_LOCATIONS].keys())
+        downsampleRate = 1
         if numFrames > 0 :
             progress = 0.0
             sequenceLocation = "/".join(semanticSequence[DICT_SEQUENCE_LOCATION].split(os.sep)[:-1]) + "/"
             ## get keys of tracked frames and size of frame
             sortedKeys = np.sort(semanticSequence[DICT_FRAMES_LOCATIONS].keys())
             frameSize = np.array(Image.open(semanticSequence[DICT_FRAMES_LOCATIONS][sortedKeys[0]])).shape[:2]
+            if downsampleRate != 1 :
+                frameSize = np.array(frameSize)/downsampleRate
             frameLocs = np.array([semanticSequence[DICT_FRAMES_LOCATIONS][key] for key in sortedKeys])
             
             ##
@@ -1510,7 +1634,12 @@ class ComputeDistanceMatrix(LongOperationClass) :
                 for i, frameLoc in enumerate(frameLocs) :
                     frameName = frameLoc.split(os.sep)[-1]
                     if os.path.isfile(semanticSequence[DICT_MASK_LOCATION]+frameName) :
-                        alpha = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName))[:, :, -1]
+                        if downsampleRate == 1 :
+                            alpha = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName))[:, :, -1]
+                        else :
+                            tmp = Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName)
+                            tmp.thumbnail((frameSize[1], frameSize[0]), Image.ANTIALIAS)
+                            alpha = np.array(tmp)[:, :, -1]
                         vis = np.argwhere(alpha != 0)
                         tl = np.min(vis, axis=0)
                         topLeft[0] = np.min([topLeft[0], tl[0]])
@@ -1526,8 +1655,13 @@ class ComputeDistanceMatrix(LongOperationClass) :
                         self.updateOperationProgressSignal.emit(progress*100)
                     if self.abortRequested :
                         return
-                        
-                bgPatch = np.array(Image.open(sequenceLocation+"median.png"))[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], 0:3]/255.0
+                
+                if downsampleRate == 1 :
+                    bgPatch = np.array(Image.open(sequenceLocation+"median.png"))[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], 0:3]/255.0
+                else :
+                    tmp = Image.open(sequenceLocation+"median.png")
+                    tmp.thumbnail((frameSize[1], frameSize[0]), Image.ANTIALIAS)
+                    bgPatch = np.array(tmp)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], 0:3]/255.0
             else :
                 topLeft = np.array([0, 0])
                 bottomRight = np.array([frameSize[0], frameSize[1]])
@@ -1573,7 +1707,7 @@ class ComputeDistanceMatrix(LongOperationClass) :
                 return
             ## figure out how to split the data to fit into memory
             memNeededPerFrame = np.prod(bgPatch.shape)*8/1000000.0#*len(semanticSequence[DICT_BBOXES])
-            maxMemToUse = psutil.virtual_memory()[1]/1000000*0.4/2 ## use 0.4 of the available memory
+            maxMemToUse = psutil.virtual_memory()[1]/1000000*0.65/2 ## use 0.5 of the available memory
             numFramesThatFit = np.round(maxMemToUse/memNeededPerFrame)
             numBlocks = int(np.ceil(numFrames/numFramesThatFit))
             blockSize = int(np.ceil(numFrames/float(numBlocks)))
@@ -1597,12 +1731,22 @@ class ComputeDistanceMatrix(LongOperationClass) :
                     if DICT_MASK_LOCATION in semanticSequence.keys() :
                         frameName = frame.split(os.sep)[-1]
                         if os.path.isfile(semanticSequence[DICT_MASK_LOCATION]+frameName) :
-                            img = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
+                            if downsampleRate == 1 :
+                                img = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
+                            else :
+                                tmp = Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName)
+                                tmp.thumbnail((frameSize[1], frameSize[0]), Image.ANTIALIAS)
+                                img = np.array(tmp, dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
                             alpha = img[:, :, -1]/255.0
                             f1s[:, :, :, idx] = ((img[:, :, :-1]/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)) + 
                                                  bgPatch*(1.0-np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))))
                     else :
-                        f1s[:, :, :, idx] = np.array(Image.open(frame), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
+                        if downsampleRate == 1 :
+                            f1s[:, :, :, idx] = np.array(Image.open(frame), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
+                        else :
+                            tmp = Image.open(frame)
+                            tmp.thumbnail((frameSize[1], frameSize[0]),Image.ANTIALIAS)
+                            f1s[:, :, :, idx] = np.array(tmp, dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
                     if self.abortRequested :
                         del f1s
                         return
@@ -1632,12 +1776,23 @@ class ComputeDistanceMatrix(LongOperationClass) :
                         if DICT_MASK_LOCATION in semanticSequence.keys() :
                             frameName = frame.split(os.sep)[-1]
                             if os.path.isfile(semanticSequence[DICT_MASK_LOCATION]+frameName) :
-                                img = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
+                                if downsampleRate == 1 :
+                                    img = np.array(Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
+                                else :
+                                    tmp = Image.open(semanticSequence[DICT_MASK_LOCATION]+frameName)
+                                    tmp.thumbnail((frameSize[1], frameSize[0]), Image.ANTIALIAS)
+                                    img = np.array(tmp, dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :]
                                 alpha = img[:, :, -1]/255.0
                                 f2s[:, :, :, idx] = ((img[:, :, :-1]/255.0)*np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1)) + 
                                                      bgPatch*(1.0-np.reshape(alpha, (alpha.shape[0], alpha.shape[1], 1))))
                         else :
-                            f2s[:, :, :, idx] = np.array(Image.open(frame), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
+                            if downsampleRate == 1 :
+                                f2s[:, :, :, idx] = np.array(Image.open(frame), dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
+                            else :
+                                tmp = Image.open(frame)
+                                tmp.thumbnail((frameSize[1], frameSize[0]), Image.ANTIALIAS)
+                                f2s[:, :, :, idx] = np.array(tmp, dtype=float)[topLeft[0]:bottomRight[0], topLeft[1]:bottomRight[1], :3]/255.0
+                                
                         if self.abortRequested :
                             del f1s, f2s, data1
                             return
@@ -1830,8 +1985,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         
         self.frameIdx = 0
         self.frameImg = None
-        self.overlayImg = QtGui.QImage(QtCore.QSize(100, 100), QtGui.QImage.Format_ARGB32)
-        self.scribble = QtGui.QImage(QtCore.QSize(100, 100), QtGui.QImage.Format_RGB888)
+        self.overlayImg = QtGui.QImage(QtCore.QSize(1, 1), QtGui.QImage.Format_ARGB32)
+        self.scribble = QtGui.QImage(QtCore.QSize(1, 1), QtGui.QImage.Format_RGB888)
         self.seqDir = ""
         self.frameLocs = []
         self.numOfFrames = 0
@@ -1845,6 +2000,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
 
         self.showFrame(self.frameIdx)
         self.setFocus()
+        
         
     def loadFrameSequencePressed(self) :
         seqDir = QtGui.QFileDialog.getExistingDirectory(self, "Load Frame Sequence", self.loadPath)
@@ -1872,6 +2028,10 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             self.frameLocs = np.sort(glob.glob(self.seqDir+"/frame-0*.png"))
             self.numOfFrames = len(self.frameLocs)
             
+#             self.allFrames = np.zeros((self.bgImage.shape[0], self.bgImage.shape[1], self.bgImage.shape[2], self.numOfFrames), dtype=np.uint8)
+#             for idx, loc in enumerate(self.frameLocs) :
+#                 self.allFrames[:, :, :, idx] = np.array(Image.open(loc)).astype(np.uint8)
+            
             if self.numOfFrames > 0 :
                 if os.path.isfile(self.seqDir+"/median.png") :
                     self.bgImage = np.array(Image.open(self.seqDir+"/median.png"))[:, :, 0:3]
@@ -1881,50 +2041,54 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             else :
                 self.bgImage = np.zeros([720, 1280, 3], np.uint8)
     
-            self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames]))
-            self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames]))
+            self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames-1]))
+            self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames-1]))
         
-            self.loadSemanticSequences()
             self.allXs = np.arange(self.bgImage.shape[1], dtype=np.float32).reshape((1, self.bgImage.shape[1])).repeat(self.bgImage.shape[0], axis=0)
             self.allYs = np.arange(self.bgImage.shape[0], dtype=np.float32).reshape((self.bgImage.shape[0], 1)).repeat(self.bgImage.shape[1], axis=1)
+            
+            self.loadSemanticSequences()
             
         self.showFrame(self.frameIdx)
         
     def addFramesToSequencePressed(self) :
-        bbox = []
-        if self.bboxIsSet :
-            bbox = self.bbox
-            
-        addFramesToSequenceDialog = AddFramesToSequenceDialog(self, self.frameLocs, bbox, "Add Frames To Input Sequence")
-        accept = bool(addFramesToSequenceDialog.exec_())
-            
-        if accept :
-            print "Add Frames [{0}, {1}]".format(addFramesToSequenceDialog.startFrame, addFramesToSequenceDialog.endFrame)
-            ## update sequence dict
-            if self.selectedSemSequenceIdx < len(self.semanticSequences) and self.selectedSemSequenceIdx >= 0 :
+        if self.selectedSemSequenceIdx < len(self.semanticSequences) and self.selectedSemSequenceIdx >= 0 :
+            bbox = []
+            if self.bboxIsSet :
+                bbox = self.bbox
 
-                rot = np.mod(np.arctan2(-(self.bbox[TL_IDX]-self.bbox[TR_IDX]).y(), 
-                                         (self.bbox[TL_IDX]-self.bbox[TR_IDX]).x()),2*np.pi)
+            addFramesToSequenceDialog = AddFramesToSequenceDialog(self, self.frameLocs, bbox, "Add Frames To Actor Sequence")
+            accept = bool(addFramesToSequenceDialog.exec_())
 
-                if addFramesToSequenceDialog.setBBoxBox.isChecked() :
-                    if DICT_BBOXES not in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES] = {}
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_CENTERS] = {}
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_ROTATIONS] = {}
+            if accept :
+                print "Add Frames [{0}, {1}]".format(addFramesToSequenceDialog.startFrame, addFramesToSequenceDialog.endFrame)
+                ## update sequence dict
+                if self.selectedSemSequenceIdx < len(self.semanticSequences) and self.selectedSemSequenceIdx >= 0 :
 
-                for i in xrange(addFramesToSequenceDialog.startFrame, addFramesToSequenceDialog.endFrame+1) :
+                    rot = np.mod(np.arctan2(-(self.bbox[TL_IDX]-self.bbox[TR_IDX]).y(), 
+                                             (self.bbox[TL_IDX]-self.bbox[TR_IDX]).x()),2*np.pi)
+
                     if addFramesToSequenceDialog.setBBoxBox.isChecked() :
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES][i] = np.array([[self.bbox[TL_IDX].x(), self.bbox[TL_IDX].y()], 
-                                                                                                            [self.bbox[TR_IDX].x(), self.bbox[TR_IDX].y()], 
-                                                                                                            [self.bbox[BR_IDX].x(), self.bbox[BR_IDX].y()], 
-                                                                                                            [self.bbox[BL_IDX].x(), self.bbox[BL_IDX].y()]])
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_CENTERS][i] = np.array([self.centerPoint.x(), self.centerPoint.y()])
-                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_ROTATIONS][i] = rot
-                        self.bboxChangedAndSaved = True
-                        
-                    self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS][i] = self.frameLocs[i]
+                        if DICT_BBOXES not in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES] = {}
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_CENTERS] = {}
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_ROTATIONS] = {}
 
-                self.setSemanticsToDraw()
+                    for i in xrange(addFramesToSequenceDialog.startFrame, addFramesToSequenceDialog.endFrame+1) :
+                        if addFramesToSequenceDialog.setBBoxBox.isChecked() :
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES][i] = np.array([[self.bbox[TL_IDX].x(), self.bbox[TL_IDX].y()], 
+                                                                                                                [self.bbox[TR_IDX].x(), self.bbox[TR_IDX].y()], 
+                                                                                                                [self.bbox[BR_IDX].x(), self.bbox[BR_IDX].y()], 
+                                                                                                                [self.bbox[BL_IDX].x(), self.bbox[BL_IDX].y()]])
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_CENTERS][i] = np.array([self.centerPoint.x(), self.centerPoint.y()])
+                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOX_ROTATIONS][i] = rot
+                            self.bboxChangedAndSaved = True
+
+                        self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS][i] = self.frameLocs[i]
+
+                    self.setSemanticsToDraw()
+                    
+        self.setFocus()
                 
     def addEndFrameToSequencePressed(self) :
         if self.selectedSemSequenceIdx < len(self.semanticSequences) and self.selectedSemSequenceIdx >= 0 :
@@ -1949,12 +2113,12 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
 
     def computeMedianPressed(self) :
         proceed = True
-        if os.path.isfile(self.seqDir + "/median.png") :
+        if self.seqDir != "" and os.path.isfile(self.seqDir + "/median.png") :
             proceed = QtGui.QMessageBox.question(self, 'Compute Median Image',
                                 "The median image for this sequence already exists\nDo you want to override?", 
                                 QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
             
-        if proceed :
+        if self.seqDir != "" and proceed :
             loadingDialog = LoadingDialog(self, "Compute Median Image")
             loadingDialog.doCancelSignal.connect(self.operationThread.doQuit)
             self.operationThread.updateOperationProgressSignal.connect(loadingDialog.setOperationProgress)
@@ -1967,21 +2131,23 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 self.bgImage = np.array(Image.open(self.seqDir+"/median.png"))[:, :, 0:3]
                 
     def computeDistanceMatrixPressed(self) :
-        loadingDialog = LoadingDialog(self, "Compute Distance Matrix")
-        loadingDialog.doCancelSignal.connect(self.operationThread.doQuit)
-        self.operationThread.updateOperationProgressSignal.connect(loadingDialog.setOperationProgress)
-        self.operationThread.updateOperationTextSignal.connect(loadingDialog.setOperationText)
-        self.operationThread.doneOperationSignal.connect(loadingDialog.doneLoading)
-        
-        distanceLocation = self.seqDir + "/overlap_normalization_distMat-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
-        costLocation = self.seqDir + "/transition_costs_no_normalization-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
-        self.operationThread.doRun(ComputeDistanceMatrix(), [self.semanticSequences[self.selectedSemSequenceIdx], distanceLocation, costLocation,
-                                                             self.isMovingSpriteBox.isChecked(), self.sigmaMultiplierSlider.value()/1000.0])
-        returnValue = loadingDialog.exec_()
-        print "DISTANCE EXIT:", returnValue
-        if returnValue == 0 :
-            self.semanticSequences[self.selectedSemSequenceIdx][DICT_DISTANCE_MATRIX_LOCATION] = distanceLocation
-            self.semanticSequences[self.selectedSemSequenceIdx][DICT_TRANSITION_COSTS_LOCATION] = costLocation
+        if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
+            loadingDialog = LoadingDialog(self, "Compute Distance Matrix")
+            loadingDialog.doCancelSignal.connect(self.operationThread.doQuit)
+            self.operationThread.updateOperationProgressSignal.connect(loadingDialog.setOperationProgress)
+            self.operationThread.updateOperationTextSignal.connect(loadingDialog.setOperationText)
+            self.operationThread.doneOperationSignal.connect(loadingDialog.doneLoading)
+
+            distanceLocation = self.seqDir + "/overlap_normalization_distMat-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
+            costLocation = self.seqDir + "/transition_costs_no_normalization-" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + ".npy"
+            self.operationThread.doRun(ComputeDistanceMatrix(), [self.semanticSequences[self.selectedSemSequenceIdx], distanceLocation, costLocation,
+                                                                 self.isMovingSpriteBox.isChecked(), self.sigmaMultiplierSlider.value()/1000.0])
+            returnValue = loadingDialog.exec_()
+            print "DISTANCE EXIT:", returnValue
+            if returnValue == 0 :
+                self.semanticSequences[self.selectedSemSequenceIdx][DICT_DISTANCE_MATRIX_LOCATION] = distanceLocation
+                self.semanticSequences[self.selectedSemSequenceIdx][DICT_TRANSITION_COSTS_LOCATION] = costLocation
+        self.setFocus()
                 
 
     def cleanup(self) :
@@ -1995,6 +2161,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 print "saved patches for", seq[DICT_SEQUENCE_NAME]
                 
         try :
+#             del self.allFrames
             del self.preloadedPatches
         except :
             print
@@ -2131,7 +2298,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
 #             print "showing", self.frameIdx
             areFramesSegmented = False
             ## HACK ##
-            im = np.ascontiguousarray(Image.open(self.frameLocs[self.frameIdx]))
+            im = np.ascontiguousarray(np.array(Image.open(self.frameLocs[self.frameIdx]))[:, :, :3])
+#             im = np.ascontiguousarray(self.allFrames[:, :, :, self.frameIdx])
             if im.shape[-1] == 3 :
                 self.frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
             else :
@@ -2177,16 +2345,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                             self.frameLabel.setOverlay(self.overlayImg)
                             
                     ## deal with segmented image
-                    if DICT_MASK_LOCATION in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
-                        im = self.getSegmentedImage(doRefreshSegmentation)
-                        if np.all(im != None) :
-                            im = np.ascontiguousarray(im)
-                            qim = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32);
-                            self.frameLabel.setSegmentedImage(qim)
-                        else :
-                            self.frameLabel.setSegmentedImage(None)
-                        
-                    
+                    if DICT_MASK_LOCATION in self.semanticSequences[self.selectedSemSequenceIdx].keys() :                    
                         ## deal with scribble
                         frameName = self.frameLocs[self.frameIdx].split(os.sep)[-1]
                         if self.scribble.size() != self.frameImg.size() :
@@ -2201,6 +2360,14 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                             self.frameLabel.setScribbleImage(self.scribble)
                         else :
                             self.frameLabel.setScribbleImage(None)
+                            
+                        im = self.getSegmentedImage(doRefreshSegmentation)
+                        if np.all(im != None) :
+                            im = np.ascontiguousarray(im)
+                            qim = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_ARGB32);
+                            self.frameLabel.setSegmentedImage(qim)
+                        else :
+                            self.frameLabel.setSegmentedImage(None)
                     else :
                         if not areFramesSegmented :
                             self.frameLabel.setSegmentedImage(None)
@@ -2210,7 +2377,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                         frame = self.frameIdx-np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())
                         if frame >= 0 and frame < len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS]) :
                             sems = self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS][frame, :]
-                            self.frameInfo.setText(self.frameInfo.text() + " <b>showing action {0} [{1}]</b>".format(int(np.argmax(sems)), np.max(sems)))
+                            self.frameInfo.setText(self.frameInfo.text() + " <b>showing \"{0}\" [{1}]</b>".format(self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES][int(np.argmax(sems))], np.max(sems)))
                         
             else :
                 self.bboxIsSet = False
@@ -2239,7 +2406,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                     frame = self.frameIdx-np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())
                     if frame >= 0 and frame < len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS]) :
                         sems = self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS][frame, :]
-                        self.frameInfo.setText(self.frameInfo.text() + " <b>of class {0} [{1}]</b>".format(int(np.argmax(sems)), np.max(sems)))
+                        self.frameInfo.setText(self.frameInfo.text() + " <b>showing \"{0}\" [{1}]</b>".format(self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES][int(np.argmax(sems))], np.max(sems)))
             
             
     def getSegmentedImage(self, refresh=False) :
@@ -2249,7 +2416,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             frameName =  self.frameLocs[self.frameIdx].split(os.sep)[-1]
             
             if not refresh and self.selectedSemSequenceIdx in self.preloadedPatches and self.frameIdx in self.preloadedPatches[self.selectedSemSequenceIdx].keys() :
-                print "showing preloaded"
+#                 print "showing preloaded"
                 spritePatch = self.preloadedPatches[self.selectedSemSequenceIdx][self.frameIdx]
                 currentFrame = np.zeros((self.bgImage.shape[0], self.bgImage.shape[1], 4), dtype=np.uint8)
                 currentFrame[spritePatch['visible_indices'][:, 0]+spritePatch['top_left_pos'][0],
@@ -2451,46 +2618,47 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
     
     def createNewSemanticSequence(self) :
 #         la = createNewSemantics(self)
-        im = np.ascontiguousarray(Image.open(self.frameLocs[self.frameIdx]))
-        frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
-        seqName, topLeft, size, color, status = createNewSemantics(self, "New Input Sequence", frameImg)
-        
-        if status :
-            print seqName, topLeft, size, color, self.frameIdx
-            proceed = True
-            for i in xrange(len(self.semanticSequences)) :
-                if seqName == self.semanticSequences[i][DICT_SEQUENCE_NAME] :
-                    proceed = QtGui.QMessageBox.question(self, 'Override Input Sequence',
-                                    "A semantic sequence named \"" + seqName + "\" already exists.\nDo you want to override?", 
-                                    QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
-                    if proceed :
-                        del self.semanticSequences[i]
-                    break
-            if proceed :
-                print "adding semantic sequence:", seqName
-                
-                self.semanticSequences.append({
-                                               DICT_SEQUENCE_NAME:seqName,
-                                               DICT_SEQUENCE_LOCATION:self.seqDir+"/semantic_sequence-"+seqName+".npy",
-                                               DICT_ICON_TOP_LEFT:topLeft,
-                                               DICT_ICON_SIZE:size,
-                                               DICT_ICON_FRAME_KEY:self.frameIdx,
-                                               DICT_REPRESENTATIVE_COLOR:color,
-                                               DICT_FRAMES_LOCATIONS:{}
-                                             })
-                
-#                 self.selectedSemSequenceIdx = 
-                currentFrame = self.frameIdx
-                self.setSemanticsToDraw()
-                self.setListOfLoadedSemSequences()
-                self.loadedSequencesListTable.selectRow(len(self.semanticSequences)-1)
-                self.changeSelectedSemSequence(self.loadedSequencesListModel.item(len(self.semanticSequences)-1).index())
-                self.frameIdxSpinBox.setValue(currentFrame)
-#                 self.showFrame(self.frameIdx)
-                sys.stdout.flush()
-    
-                self.toggleDefineMode()
-            
+        if len(self.frameLocs) > 0 :
+            im = np.ascontiguousarray(np.array(Image.open(self.frameLocs[self.frameIdx]))[:, :, :3])
+            frameImg = QtGui.QImage(im.data, im.shape[1], im.shape[0], im.strides[0], QtGui.QImage.Format_RGB888);
+            seqName, topLeft, size, color, status = createNewSemantics(self, "New Actor Sequence", frameImg)
+
+            if status :
+                print seqName, topLeft, size, color, self.frameIdx
+                proceed = True
+                for i in xrange(len(self.semanticSequences)) :
+                    if seqName == self.semanticSequences[i][DICT_SEQUENCE_NAME] :
+                        proceed = QtGui.QMessageBox.question(self, 'Override Actor Sequence',
+                                        "An actor sequence named \"" + seqName + "\" already exists.\nDo you want to override?", 
+                                        QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
+                        if proceed :
+                            del self.semanticSequences[i]
+                        break
+                if proceed :
+                    print "adding semantic sequence:", seqName
+
+                    self.semanticSequences.append({
+                                                   DICT_SEQUENCE_NAME:seqName,
+                                                   DICT_SEQUENCE_LOCATION:self.seqDir+"/semantic_sequence-"+seqName+".npy",
+                                                   DICT_ICON_TOP_LEFT:topLeft,
+                                                   DICT_ICON_SIZE:size,
+                                                   DICT_ICON_FRAME_KEY:self.frameIdx,
+                                                   DICT_REPRESENTATIVE_COLOR:color,
+                                                   DICT_FRAMES_LOCATIONS:{}
+                                                 })
+
+    #                 self.selectedSemSequenceIdx = 
+                    currentFrame = self.frameIdx
+                    self.setSemanticsToDraw()
+                    self.setListOfLoadedSemSequences()
+                    self.loadedSequencesListTable.selectRow(len(self.semanticSequences)-1)
+                    self.changeSelectedSemSequence(self.loadedSequencesListModel.item(len(self.semanticSequences)-1).index())
+                    self.frameIdxSpinBox.setValue(currentFrame)
+    #                 self.showFrame(self.frameIdx)
+                    sys.stdout.flush()
+
+#                     self.toggleDefineMode()
+
         self.setFocus()
         
     def setSemanticsToDraw(self) :
@@ -2557,8 +2725,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 self.semanticSequences.append(np.load(f).item())
                 if (DICT_FRAMES_LOCATIONS in self.semanticSequences[-1].keys() and len(self.semanticSequences[-1][DICT_FRAMES_LOCATIONS].keys()) > 0 and
                     np.max(self.semanticSequences[-1][DICT_FRAMES_LOCATIONS].keys()) == self.numOfFrames) :
-                    self.frameIdxSlider.setMaximum(self.numOfFrames)
-                    self.frameIdxSpinBox.setRange(0, self.numOfFrames)
+                    self.frameIdxSlider.setMaximum(np.max([0, self.numOfFrames-1]))
+                    self.frameIdxSpinBox.setRange(0, np.max([0, self.numOfFrames-1]))
                     
             if DICT_PATCHES_LOCATION in self.semanticSequences[-1].keys() :
                 with open(self.semanticSequences[-1][DICT_PATCHES_LOCATION]) as f :
@@ -2567,9 +2735,41 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                     self.preloadedPatches[index]['needs_saving'] = False
             if DICT_FRAME_SEMANTICS in self.semanticSequences[-1].keys() and DICT_NUM_SEMANTICS not in self.semanticSequences[-1].keys() :
                 print "DICT_NUM_SEMANTICS not present even though there are", self.semanticSequences[-1][DICT_FRAME_SEMANTICS].shape[1], "semantics in DICT_FRAME_SEMANTICS.",
-                print "Goto this piece of code and uncomment the saving code"
+#                 print "Goto this piece of code and uncomment the saving code"
                 self.semanticSequences[-1][DICT_NUM_SEMANTICS] = self.semanticSequences[-1][DICT_FRAME_SEMANTICS].shape[1]
-#                 np.save(self.semanticSequences[-1][DICT_SEQUENCE_LOCATION], self.semanticSequences[-1])
+                np.save(self.semanticSequences[-1][DICT_SEQUENCE_LOCATION], self.semanticSequences[-1])
+                    
+            ## check that they have defined actions and if they do that they have assigned names
+            if DICT_NUM_SEMANTICS in self.semanticSequences[-1].keys() :
+                tmpDoSave = False
+                if DICT_SEMANTICS_NAMES not in self.semanticSequences[-1].keys() :
+                    self.semanticSequences[-1][DICT_SEMANTICS_NAMES] = {}
+                    tmpDoSave = True
+                    
+                for semIdx in xrange(self.semanticSequences[-1][DICT_NUM_SEMANTICS]) :
+                    if semIdx not in self.semanticSequences[-1][DICT_SEMANTICS_NAMES].keys() :
+                        self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx] = "action{0:d}".format(semIdx)
+                        print "ACTION NAME", self.semanticSequences[-1][DICT_SEMANTICS_NAMES][semIdx], "added for", self.semanticSequences[-1][DICT_SEQUENCE_NAME]
+                        tmpDoSave = True
+                    
+                numFrames = len(self.semanticSequences[-1][DICT_FRAMES_LOCATIONS].keys())
+            #     print numFrames, seqLoc
+                if DICT_LABELLED_FRAMES in self.semanticSequences[-1].keys() and DICT_NUM_EXTRA_FRAMES in self.semanticSequences[-1].keys() :
+                    for i in xrange(len(self.semanticSequences[-1][DICT_LABELLED_FRAMES])) :
+                        listToKeep = []
+                        for j in xrange(len(self.semanticSequences[-1][DICT_LABELLED_FRAMES][i])) :
+                            if self.semanticSequences[-1][DICT_LABELLED_FRAMES][i][j] >= 0 and self.semanticSequences[-1][DICT_LABELLED_FRAMES][i][j] < numFrames :
+                                listToKeep.append(j)
+                                
+                        if len(listToKeep) != len(self.semanticSequences[-1][DICT_LABELLED_FRAMES][i]) :
+                            tmpDoSave = True
+            #             print self.semanticSequences[-1][DICT_LABELLED_FRAMES][i], listToKeep,
+                        self.semanticSequences[-1][DICT_LABELLED_FRAMES][i] = [self.semanticSequences[-1][DICT_LABELLED_FRAMES][i][j] for j in listToKeep]
+                        self.semanticSequences[-1][DICT_NUM_EXTRA_FRAMES][i] = [self.semanticSequences[-1][DICT_NUM_EXTRA_FRAMES][i][j] for j in listToKeep]
+            #             print self.semanticSequences[-1][DICT_LABELLED_FRAMES][i], self.semanticSequences[-1][DICT_NUM_EXTRA_FRAMES][i]
+                        
+                if tmpDoSave :
+                    np.save(self.semanticSequences[-1][DICT_SEQUENCE_LOCATION], self.semanticSequences[-1])
                 
                 
         
@@ -2935,26 +3135,27 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                     self.bboxIsSet = True
             else :
                 ## SCRIBBLING
-                if ((event.buttons() & QtCore.Qt.LeftButton) or (event.buttons() & QtCore.Qt.RightButton)) and self.scribbling:
+                if DICT_MASK_LOCATION in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
+                    if ((event.buttons() & QtCore.Qt.LeftButton) or (event.buttons() & QtCore.Qt.RightButton)) and self.scribbling:
 
-                    if event.buttons() & QtCore.Qt.LeftButton :
-                        ## foreground
-                        penColor = QtGui.QColor.fromRgb(0, 255, 0)
-                    else :
-                        ## background
-                        penColor = QtGui.QColor.fromRgb(0, 0, 255)
+                        if event.buttons() & QtCore.Qt.LeftButton :
+                            ## foreground
+                            penColor = QtGui.QColor.fromRgb(0, 255, 0)
+                        else :
+                            ## background
+                            penColor = QtGui.QColor.fromRgb(0, 0, 255)
 
-                    if QtGui.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier :
-                        ## delete
-                        penColor = QtGui.QColor.fromRgb(255, 255, 255)
+                        if QtGui.QApplication.keyboardModifiers() & QtCore.Qt.ShiftModifier :
+                            ## delete
+                            penColor = QtGui.QColor.fromRgb(255, 255, 255)
 
-                    self.drawLineTo(event.posF(), penColor)
+                        self.drawLineTo(event.posF(), penColor)
 
-                    self.scribbling = False
+                        self.scribbling = False
 
-                if self.frameIdx >= 0 and self.frameIdx < self.numOfFrames :
-                    frameName = self.frameLocs[self.frameIdx].split(os.sep)[-1]
-                    self.scribble.save(self.semanticSequences[self.selectedSemSequenceIdx][DICT_MASK_LOCATION]+"scribble-" + frameName)
+                    if self.frameIdx >= 0 and self.frameIdx < self.numOfFrames :
+                        frameName = self.frameLocs[self.frameIdx].split(os.sep)[-1]
+                        self.scribble.save(self.semanticSequences[self.selectedSemSequenceIdx][DICT_MASK_LOCATION]+"scribble-" + frameName)
 
             
     def drawLineTo(self, endPoint, penColor):
@@ -3019,6 +3220,10 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             
     def computeLabelPropagation(self) :
         self.setFocus()
+        
+        if self.selectedSemSequenceIdx >= len(self.semanticSequences) or self.selectedSemSequenceIdx < 0 :
+            return
+        
         if DICT_DISTANCE_MATRIX_LOCATION not in self.semanticSequences[self.selectedSemSequenceIdx] :
             QtGui.QMessageBox.warning(self, "Distance Matrix Not Found", ("Cannot refresh semantic labels as the distance matrix has not been "+
                                                                           "computed for this semantic sequence. However, the labelled frame has been "+
@@ -3067,11 +3272,13 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 elif len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_LABELLED_FRAMES]) == 1 :
                     self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS] = np.ones([len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS]), 1])
                     self.semanticsLabel.setSemantics(self.semanticSequences[self.selectedSemSequenceIdx])
+                    
+                self.showFrame(self.frameIdx)
             
     def keyPressEvent(self, e) :
         if e.key() == e.key() >= QtCore.Qt.Key_0 and e.key() <= QtCore.Qt.Key_9 :
             pressedNum = np.mod(e.key()-int(QtCore.Qt.Key_0), int(QtCore.Qt.Key_9))
-            if not self.tracking and not self.segmenting :                
+            if not self.tracking and not self.segmenting :
                 startFrame = np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())
                 labelledFrame = self.frameIdx-startFrame
                 doRecomputeSemantics = False
@@ -3156,6 +3363,13 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                                 self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_SEMANTICS] += 1
                                 
                                 doRecomputeSemantics = True
+                                
+                                semActionIdx = self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_SEMANTICS]-1
+                                if DICT_SEMANTICS_NAMES not in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
+                                    self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES] = {}
+                                self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES][semActionIdx] = "action{0:d}".format(semActionIdx)
+                                self.nameSemanticAction(self.selectedSemSequenceIdx, semActionIdx)
+                                    
                         ## don't do anything as a number too large was pressed
                         else :
                             print "PRESSED INVALID NUMBER", pressedNum
@@ -3168,7 +3382,38 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 if doRecomputeSemantics :
                     self.computeLabelPropagation()
                             
-            
+        elif e.key() == QtCore.Qt.Key_Minus :
+            ## COPIED FROM ABOVE
+            startFrame = np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())
+            labelledFrame = self.frameIdx-startFrame
+            if labelledFrame >= 0 and labelledFrame < len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS]) :
+                proceed = True
+                ## check if I already labelled the current frame and if the user says so delete it from the other classes
+                if DICT_LABELLED_FRAMES in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
+                    for classIdx in xrange(len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_LABELLED_FRAMES])) :
+                        classLabelledFrames = np.array(self.semanticSequences[self.selectedSemSequenceIdx][DICT_LABELLED_FRAMES][classIdx])
+                        classNumExtraFrames = np.array(self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_EXTRA_FRAMES][classIdx])
+                        targetFrames = np.arange(labelledFrame-self.numExtraFramesSpinBox.value()/2, labelledFrame+self.numExtraFramesSpinBox.value()/2+1).reshape((1, self.numExtraFramesSpinBox.value()+1))
+                        found = np.any(np.abs(targetFrames - classLabelledFrames.reshape((len(classLabelledFrames), 1))) <= classNumExtraFrames.reshape((len(classNumExtraFrames), 1))/2, axis=1)
+        #                             found = np.abs(labelledFrame-classLabelledFrames) <= classNumExtraFrames/2
+                        if np.any(found) :
+                            classTypeName = "<u>compatibility</u>"
+                            if classIdx < self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_SEMANTICS] :
+                                classTypeName = "<u>semantic</u>"
+
+                            if np.all(found) :
+                                text = "<p align='center'>The current frame has previously been labelled as "+classTypeName+" class {0}. "
+                                text += "If it is deleted, class {0} will have no remaining examples.<br>Do you want to proceed?</p>"
+                                text = text.format(classIdx)
+                            else :
+                                text = "<p align='center'>The current frame has previously been labelled as "+classTypeName+" class {0}.<br>Do you want to delete?</p>".format(classIdx)
+                            proceed = QtGui.QMessageBox.question(self, 'Frame already labelled', text, 
+                                                                 QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No) == QtGui.QMessageBox.Yes
+                            if proceed :
+                                self.semanticSequences[self.selectedSemSequenceIdx][DICT_LABELLED_FRAMES][classIdx] = [x for i, x in enumerate(classLabelledFrames) if not found[i]]
+                                self.semanticSequences[self.selectedSemSequenceIdx][DICT_NUM_EXTRA_FRAMES][classIdx] = [x for i, x in enumerate(classNumExtraFrames) if not found[i]]
+                                self.computeLabelPropagation()
+                                
         elif e.key() == QtCore.Qt.Key_M :
             self.toggleDefineMode()
                 
@@ -3204,7 +3449,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
 #                 self.segmenting = False
         elif e.key() == QtCore.Qt.Key_Right :
             self.frameIdxSpinBox.setValue(self.frameIdx+1)
-            if False and self.bboxIsSet and np.any(self.tracker != None) :
+            if e.modifiers() & QtCore.Qt.Modifier.CTRL and self.bboxIsSet and np.any(self.tracker != None) :
                 self.tracking = True
                 try :
                     self.trackInFrame()
@@ -3217,7 +3462,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                 self.tracking = False
         elif e.key() == QtCore.Qt.Key_Left :
             self.frameIdxSpinBox.setValue(self.frameIdx-1)
-            if False and self.bboxIsSet and np.any(self.tracker != None) :
+            if e.modifiers() & QtCore.Qt.Modifier.CTRL and self.bboxIsSet and np.any(self.tracker != None) :
                 self.tracking = True
                 try :
                     self.trackInFrame()
@@ -3312,9 +3557,26 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                         self.frameLabel.setOverlay(self.overlayImg)
                     
                 self.settingBBox = False
+        elif e.key() == QtCore.Qt.Key_R :
+            if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
+                
+                frame = self.frameIdx-np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys())
+                if frame >= 0 and frame < len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS]) :
+                    sems = self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS][frame, :]                        
+                    self.nameSemanticAction(self.selectedSemSequenceIdx, int(np.argmax(sems)), True)
+            
             
         sys.stdout.flush()
         
+    def nameSemanticAction(self, sequenceIdx, actionIdx, doSave = False) :
+        newName, ok = QtGui.QInputDialog.getText(self, "Name Action", "Name of {0}'s Action {1}".format(self.semanticSequences[sequenceIdx][DICT_SEQUENCE_NAME], actionIdx),
+                                                 QtGui.QLineEdit.Normal, self.semanticSequences[sequenceIdx][DICT_SEMANTICS_NAMES][actionIdx])
+        if ok and newName :
+            print "NAMING", self.semanticSequences[sequenceIdx][DICT_SEMANTICS_NAMES][actionIdx], "AS", newName
+            self.semanticSequences[sequenceIdx][DICT_SEMANTICS_NAMES][actionIdx] = newName
+            self.showFrame(self.frameIdx)
+            if doSave :
+                np.save(self.semanticSequences[sequenceIdx][DICT_SEQUENCE_LOCATION], self.semanticSequences[sequenceIdx])
         
     def wheelEvent(self, e) :
         if not self.isModeBBox and e.modifiers() & QtCore.Qt.Modifier.CTRL :
@@ -3330,6 +3592,21 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
             time.sleep(0.01)
         
     def eventFilter(self, obj, event) :
+        if obj == self.semanticsLabel and event.type() == QtCore.QEvent.Type.MouseMove :
+            if self.semanticsLabel.image != None and self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
+                xLoc = (self.semanticsLabel.width()-self.semanticsLabel.image.width())/2.0
+                frame = (event.pos().x()-xLoc-1)/self.semanticsLabel.scaleFactor
+#                 print event.pos().x(), xLoc, self.semanticsLabel.scaleFactor, self.semanticsLabel.image.width(), frame, int(np.round(frame))
+                if frame >= 0 and frame < len(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS]) :
+                    frame = int(np.round(frame))
+                    sems = self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAME_SEMANTICS][frame, :]
+                    QtGui.QToolTip.showText(QtGui.QCursor.pos(), "<b>{0}</b> showing <b>{1}</b> at frame <b>{2}</b>".format(self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME],
+                                                                                                                            self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEMANTICS_NAMES][int(np.argmax(sems))],
+                                                                                                                            np.string0(frame+
+                                                                                                                                       np.min(self.semanticSequences[self.selectedSemSequenceIdx][DICT_FRAMES_LOCATIONS].keys()))
+                                                                                                                            ))
+                    return True
+        
         if obj == self.frameLabel and event.type() == QtCore.QEvent.Type.MouseMove :
             self.mouseMoved(event)
             return True
@@ -3351,6 +3628,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         elif obj == self.extraSegmentationControls and event.type() == QtCore.QEvent.Type.MouseButtonPress :
             self.showExtraSegmentationControls()
             return True
+        
         return QtGui.QWidget.eventFilter(self, obj, event)
     
     def setSemanticsColor(self, startColor) :
@@ -3415,7 +3693,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         
     def refreshSegmentation(self) :
         self.setFocus()
-        if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) :
+        if self.selectedSemSequenceIdx >= 0 and self.selectedSemSequenceIdx < len(self.semanticSequences) and DICT_BBOXES in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
             
             if DICT_MASK_LOCATION not in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
                 self.semanticSequences[self.selectedSemSequenceIdx][DICT_MASK_LOCATION] = self.seqDir + "/" + self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_NAME] + "-maskedFlow/"
@@ -3423,13 +3701,14 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                     os.mkdir(self.semanticSequences[self.selectedSemSequenceIdx][DICT_MASK_LOCATION])
                 np.save(self.semanticSequences[self.selectedSemSequenceIdx][DICT_SEQUENCE_LOCATION], self.semanticSequences[self.selectedSemSequenceIdx])
                 
-            if not os.path.isfile(self.seqDir+"/median.png") :
+            if self.seqDir != "" and not os.path.isfile(self.seqDir+"/median.png") :
                 QtGui.QMessageBox.warning(self, "Median Image Not Computed", ("The median image for this sequence has not been computed. The segmentation will "+
                                                                               "not produce the expected result. Please <i>Compute Median</i> first. "))
+                return
             self.showFrame(self.frameIdx, True)
         
     def segmentSequence(self) :
-        if not os.path.isfile(self.seqDir+"/median.png") :
+        if self.seqDir != "" and not os.path.isfile(self.seqDir+"/median.png") :
             QtGui.QMessageBox.warning(self, "Median Image Not Computed", ("The median image for this sequence has not been computed. The segmentation will "+
                                                                           "not produce the expected result. Please <i>Compute Median</i> first. "))
             return
@@ -3446,7 +3725,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
                     QtGui.QApplication.processEvents()
                     if not self.segmenting :
                         break;
-            else :
+            elif DICT_BBOXES in self.semanticSequences[self.selectedSemSequenceIdx].keys() :
                 for frameIdx in np.sort(self.semanticSequences[self.selectedSemSequenceIdx][DICT_BBOXES].keys()) :
                     self.frameIdx = frameIdx
                     self.refreshSegmentation()
@@ -3488,6 +3767,8 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         
         self.semanticsLabel = SemanticsLabel("Actions")
         self.semanticsLabel.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignHCenter)
+        self.semanticsLabel.setMouseTracking(True)
+        self.semanticsLabel.installEventFilter(self)
         
 #         self.loadedSequencesListTable = QtGui.QTableWidget(1, 1)
 #         self.loadedSequencesListTable.horizontalHeader().setStretchLastSection(True)
@@ -3500,7 +3781,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
 #         self.loadedSequencesListTable.setItem(0, 0, QtGui.QTableWidgetItem("None"))
 
         self.loadedSequencesListModel = QtGui.QStandardItemModel(1, 1)
-        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded Input Sequences"])
+        self.loadedSequencesListModel.setHorizontalHeaderLabels(["Loaded Actor Sequences"])
         self.loadedSequencesListModel.setItem(0, 0, QtGui.QStandardItem("None"))
         
         self.loadedSequencesListTable = QtGui.QTableView()
@@ -3513,6 +3794,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.loadedSequencesListTable.verticalHeader().setVisible(False)
         self.loadedSequencesListTable.verticalHeader().setDefaultSectionSize(LIST_SECTION_SIZE)
         self.loadedSequencesListTable.setMinimumHeight(10)
+        self.loadedSequencesListTable.setEnabled(False)
 
         self.delegateList = [ListDelegate()]
         self.loadedSequencesListTable.setItemDelegateForRow(0, self.delegateList[-1])
@@ -3521,7 +3803,7 @@ class SemanticsDefinitionTab(QtGui.QWidget) :
         self.computeMedianImageButton = QtGui.QPushButton("Compute Median")
         self.computeDistanceMatrixButton = QtGui.QPushButton("Compute Distance Matrix")
         
-        self.newSemSequenceButton = QtGui.QPushButton("&New Input Sequence")
+        self.newSemSequenceButton = QtGui.QPushButton("&New Actor Sequence")
         self.semanticsColorButton = QtGui.QPushButton("Set &Color")
         self.semanticsColorButton.setCheckable(True)
         

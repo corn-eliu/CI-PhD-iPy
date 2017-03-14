@@ -1826,13 +1826,16 @@ baseLoc = "/media/ilisescu/Data1/PhD/data/wave1/"
 ## puts together sound based on semantics of synthesised sequence
 soundTracks = []
 samplerate = 0
-for track in np.sort(glob.glob("/media/ilisescu/Data1/PhD/data/toy/toy[1-8].wav")) :
+trackLocs = np.sort(glob.glob("/media/ilisescu/Data1/PhD/data/toy/toy[1-8].wav"))
+
+for track in trackLocs :
     print track,
     sig, samplerate = sf.read(track)
     print sig.shape
     soundTracks.append(sig)
 
-synthSequence = np.load(dataPath+"synthesisedSequences/lullaby/synthesised_sequence.npy").item()#window.semanticLoopingTab.synthesisedSequence
+synthSequence = np.load("/media/ilisescu/Data1/PhD/data/synthesisedSequences/lullaby_quick/synthesised_sequence.npy").item()#window.semanticLoopingTab.synthesisedSequence
+
 usedSequence = np.load(synthSequence[DICT_USED_SEQUENCES][0]).item()
 frameSemantics = usedSequence[DICT_FRAME_SEMANTICS][:, 1:]
 numSemantics = frameSemantics.shape[1]
@@ -1844,15 +1847,92 @@ audioTrack = np.zeros((audioSamplesPerFrame*len(usedFrames), 2))
 for sem in arange(numSemantics)[0:] :
 #     figure(); plot(frameSemantics[usedFrames, sem])
     semLocs = np.argwhere(frameSemantics[usedFrames, sem] > 0.9).flatten()
-    print semLocs
+    print "bla", semLocs
     if len(semLocs) > 0 :
         clusters = np.concatenate(([0], np.cumsum((np.abs(semLocs[:-1]-semLocs[1:]) != 1).astype(int))))
         for cluster in xrange(np.max(clusters)+1) :
             centerLoc = int(np.round(np.median(semLocs[np.argwhere(clusters == cluster).flatten()])))
-            print centerLoc, centerLoc*audioSamplesPerFrame, sem, len(soundTracks[sem])
+            print "la", centerLoc, centerLoc*audioSamplesPerFrame, sem, len(soundTracks[sem])
             audioTrack[centerLoc*audioSamplesPerFrame:centerLoc*audioSamplesPerFrame+len(soundTracks[sem]), :] += soundTracks[sem]
     #         scatter(centerLoc, 1)
-sf.write(dataPath+"synthesisedSequences/lullaby/lullaby.wav", audioTrack, samplerate)
+sf.write("/media/ilisescu/Data1/PhD/data/synthesisedSequences/lullaby_quick/lullaby.wav", audioTrack, samplerate)
+
+# <codecell>
+
+## puts together sound based on playSoundsTimes of synthesised sequence
+soundTracks = []
+samplerate = 0
+trackLocs = ["/media/ilisescu/Data1/PhD/data/drumming2/meow.wav",   ## snare               https://www.freesound.org/people/steffcaffrey/sounds/262312/
+             "/media/ilisescu/Data1/PhD/data/drumming2/mario.wav",   ## high tom           https://www.youtube.com/watch?v=cBY_2ABINVg
+             "/media/ilisescu/Data1/PhD/data/drumming2/laser.wav",   ## high hat           https://www.freesound.org/people/tlwm/sounds/165825/
+             "/media/ilisescu/Data1/PhD/data/drumming2/mirror.wav",   ## crash             http://soundbible.com/994-Mirror-Shattering.html
+             "/media/ilisescu/Data1/PhD/data/drumming2/lightsaber.wav",   ## floor tom     http://sweetsoundeffects.com/lightsaber-sounds/
+             "/media/ilisescu/Data1/PhD/data/drumming2/frog.wav",   ## low tom             https://www.freesound.org/people/daveincamas/sounds/71964/
+             "/media/ilisescu/Data1/PhD/data/drumming2/splash.wav",   ## splash            https://www.freesound.org/people/InspectorJ/sounds/352098/
+             "/media/ilisescu/Data1/PhD/data/drumming2/thunder.wav"]   ## bass             drum https://www.freesound.org/people/juskiddink/sounds/101933/
+
+for track in trackLocs :
+    print track,
+    sig, samplerate = sf.read(track)
+    print sig.shape
+    soundTracks.append(sig)
+    
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_new"
+baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_laggy"
+
+synthSequence = np.load(baseLoc+"/synthesised_sequence.npy").item()#window.semanticLoopingTab.synthesisedSequence
+playSoundsTimes = np.load(baseLoc+"/playSoundsTimes.npy").item()
+usedFrames = synthSequence[DICT_SEQUENCE_INSTANCES][0][DICT_SEQUENCE_FRAMES]
+videoFPS = 60.0
+audioSamplesPerFrame = int(np.round(samplerate/videoFPS))
+audioTrack = np.zeros((audioSamplesPerFrame*len(usedFrames), 2))
+
+print playSoundsTimes
+
+for frameKey in np.sort(playSoundsTimes.keys()) :
+    print frameKey,
+    for layerKey in np.sort(playSoundsTimes[frameKey].keys()) :
+        trackIdx = playSoundsTimes[frameKey][layerKey]
+        print layerKey, "playing sound", trackIdx,
+        numChannels = 2
+        if len(soundTracks[trackIdx].shape) == 1 :
+            numChannels = 1
+            
+        audioTrack[frameKey*audioSamplesPerFrame:frameKey*audioSamplesPerFrame+len(soundTracks[trackIdx]), :] += soundTracks[trackIdx].reshape([len(soundTracks[trackIdx]), numChannels])
+    print
+sf.write(baseLoc+"/drumming.wav", audioTrack, samplerate)
+    
+
+# usedSequence = np.load(synthSequence[DICT_USED_SEQUENCES][0]).item()
+# frameSemantics = usedSequence[DICT_FRAME_SEMANTICS][:, 1:]
+# numSemantics = frameSemantics.shape[1]
+
+# for sem in arange(numSemantics)[0:] :
+# #     figure(); plot(frameSemantics[usedFrames, sem])
+#     semLocs = np.argwhere(frameSemantics[usedFrames, sem] > 0.9).flatten()
+#     print "bla", semLocs
+#     if len(semLocs) > 0 :
+#         clusters = np.concatenate(([0], np.cumsum((np.abs(semLocs[:-1]-semLocs[1:]) != 1).astype(int))))
+#         for cluster in xrange(np.max(clusters)+1) :
+#             centerLoc = int(np.round(np.median(semLocs[np.argwhere(clusters == cluster).flatten()])))
+#             print "la", centerLoc, centerLoc*audioSamplesPerFrame, sem, len(soundTracks[sem])
+#             audioTrack[centerLoc*audioSamplesPerFrame:centerLoc*audioSamplesPerFrame+len(soundTracks[sem]), :] += soundTracks[sem]
+#     #         scatter(centerLoc, 1)
+# sf.write("/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_new/drumming.wav", audioTrack, samplerate)
+
+# <codecell>
+
+print trackIdx
+print audioTrack[frameKey*audioSamplesPerFrame:frameKey*audioSamplesPerFrame+len(soundTracks[trackIdx]), :].shape
+print soundTracks[trackIdx].reshape([len(soundTracks[trackIdx]), numChannels]).shape
+print len(usedFrames)
+print audioTrack.shape
+print len(usedFrames)*audioSamplesPerFrame
+print frameKey*audioSamplesPerFrame
+print samplerate, audioSamplesPerFrame
+print
+print 735*frameKey
+print 138771/44100.0
 
 # <codecell>
 

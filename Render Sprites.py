@@ -27,7 +27,7 @@ import GraphWithValues as gwv
 import VideoTexturesUtils as vtu
 import SemanticsDefinitionTabGUI as sdt
 import opengm
-import soundfile as sf
+# import soundfile as sf
 
 from matplotlib.patches import Rectangle
 
@@ -355,6 +355,7 @@ def blend(img_target, img_source, img_mask, offset=(0, 0)):
 
 def getPoissonBlended(backgroundLoc, frameLoc, maskLoc, fgOffset) :
 #     print "BG", backgroundLoc, "FRAME", frameLoc, "MASK", maskLoc
+    print "computing poisson", frameLoc,
     im = np.array(Image.open(maskLoc))
     imgSize = im.shape[0:2]
 
@@ -509,13 +510,34 @@ def compareBBoxes(x, y, verbose=False) :
 
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/digger/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_fattestbar/"
-baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/havanaComplex/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_top_bottom/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_double_trouble/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_interlaced/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/lullaby_quick/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_new/"
+baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_laggy/"
+# baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/havanaComplex/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/flowers/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/street_complex/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_full/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/super_mario_planes_latest/"
 # baseLoc = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/USER STUDIES SEQUENCES/moos/wave_user_study_task/"
 doComputePoisson = True
+# baseLocBlended = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/wave_by_numbers_fattestbar/" 
+baseLocBlended = "/media/ilisescu/Data1/PhD/data/synthesisedSequences/drumming_new/" 
+# baseLocBlended = baseLoc
+
+# <codecell>
+
+## this is for stuff like lullaby that doesn't need the blending and compositing so I can just copy the frames
+# synthSeq = np.load(baseLoc+"synthesised_sequence.npy").item()
+# semanticSequences = []
+# for usedSeqLoc in synthSeq[DICT_USED_SEQUENCES] :
+#     semanticSequences.append(np.load(usedSeqLoc).item())
+    
+# if len(semanticSequences) == 1 and len(synthSeq[DICT_SEQUENCE_INSTANCES]) == 1 :
+#     for frameIdx, frameKey in enumerate(synthSeq[DICT_SEQUENCE_INSTANCES][0][DICT_SEQUENCE_FRAMES]) :
+#         shutil.copyfile(semanticSequences[0][DICT_FRAMES_LOCATIONS][frameKey], baseLoc+"frame-{0:05}.png".format(frameIdx))
 
 # <codecell>
 
@@ -548,9 +570,9 @@ if doComputePoisson :
 
 
     avgTime = 0.0
-    for iterNum, f in enumerate(arange(minFrames)[594:595]) :
+    for iterNum, f in enumerate(arange(minFrames)[0:]) :
         t = time.time()
-        for sIdx, seq in enumerate(synthSeq[DICT_SEQUENCE_INSTANCES][1:2]) :
+        for sIdx, seq in enumerate(synthSeq[DICT_SEQUENCE_INSTANCES][0:]) :
             seq1Idx = seq[DICT_SEQUENCE_IDX]
             frame1Idx = seq[DICT_SEQUENCE_FRAMES][f]
 
@@ -568,7 +590,7 @@ if doComputePoisson :
                 frame1Offset = seq[DICT_OFFSET]
                 frame1Scale = seq[DICT_SCALE]
                 
-            if True :#not os.path.isfile(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx)) :
+            if not os.path.isfile(baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx)) :
 
                 if frame1Key in semanticSequences[seq1Idx][DICT_FRAMES_LOCATIONS] :
 
@@ -578,7 +600,7 @@ if doComputePoisson :
                                                 "/".join(semanticSequences[seq1Idx][DICT_MASK_LOCATION].split("/")[:-2])+"/frame-{0:05}.png".format(frame1Key+1),
                                                 semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame1Key+1), frame1Offset[::-1])
 
-
+#                     print sprite1.shape
                     ## dealing with scale and offsets WELL NO SCALE REALLY BUT FUCK IT
                     tmp = np.zeros_like(sprite1)
                     if tmp[offset[1]+frame1Offset[1]:offset[1]+frame1Offset[1]+patchSize[0],
@@ -588,7 +610,7 @@ if doComputePoisson :
                             offset[0]+frame1Offset[0]:offset[0]+frame1Offset[0]+patchSize[1], :] = sprite1[offset[1]:offset[1]+patchSize[0], offset[0]:offset[0]+patchSize[1], :]
                     sprite1 = np.copy(tmp)
                     del tmp
-#                     Image.fromarray(sprite1.astype(np.uint8)).save(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx))
+                    Image.fromarray(sprite1.astype(np.uint8)).save(baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx))
 
         avgTime = (avgTime*iterNum + time.time()-t)/(iterNum+1)
         remainingTime = avgTime*(maxFramesToRender-iterNum-1)/60.0
@@ -597,20 +619,26 @@ if doComputePoisson :
                          np.string_(int(np.floor(remainingTime))) + ":" + np.string_(int((remainingTime - np.floor(remainingTime))*60)) + ")")
         sys.stdout.flush()
         
-        sprite1 = sprite1[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]
-        alphaMask = (sprite1[:, :, -1]/255.0).reshape([patchSize[0], patchSize[1], 1])
-        sprite1 = sprite1[:, :, :-1]
-        compositedBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + sprite1*alphaMask).astype(np.uint8)
-        compositedNotBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + spritePatch*alphaMask).astype(np.uint8)
-        figure(); imshow(compositedBlended)
-        figure(); imshow(compositedNotBlended)
+#         sprite1 = sprite1[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]
+#         alphaMask = (sprite1[:, :, -1]/255.0).reshape([patchSize[0], patchSize[1], 1])
+#         sprite1 = sprite1[:, :, :-1]
+#         compositedBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + sprite1*alphaMask).astype(np.uint8)
+#         compositedNotBlended = (bgImage[offset[1, 0]:offset[1, 0]+patchSize[0], offset[0, 0]:offset[0, 0]+patchSize[1], :]*(1.0-alphaMask) + spritePatch*alphaMask).astype(np.uint8)
+#         figure(); imshow(compositedBlended)
+#         figure(); imshow(compositedNotBlended)
     print 
     print "done"
 
 # <codecell>
 
-print patchSize, offset
-print offset[0, 0],offset[0, 0]+patchSize[1], offset[1, 0],offset[1, 0]+patchSize[0]
+print patchSize, baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx)
+print getPoissonBlended(bgLoc,
+                                                "/".join(semanticSequences[seq1Idx][DICT_MASK_LOCATION].split("/")[:-2])+"/frame-{0:05}.png".format(frame1Key+1),
+                                                semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame1Key+1), frame1Offset[::-1]).shape
+
+# <codecell>
+
+print sequencesOrder
 
 # <codecell>
 
@@ -639,13 +667,16 @@ for i in xrange(len(synthSeq[DICT_SEQUENCE_INSTANCES])) :
 
 
 ## super mario planes
-thresh = 4.5
-alpha = 0.15
+# thresh = 4.5
+# alpha = 0.15
 
 # ## wave
 # thresh = 4.0
 # alpha = 0.25
 
+# ## drumming_new
+thresh = 50.0
+alpha = 0.75
 
 kSize = 15
 sigma = 11
@@ -726,14 +757,15 @@ for iterNum, f in enumerate(arange(minFrames)[0:]) : #[:maxFramesToRender]) :
                 if os.path.isfile(semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"blended/frame-{0:05}.png".format(frame1Key+1)) :
                     sprite1 = np.array(Image.open(semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"blended/frame-{0:05}.png".format(frame1Key+1)))
                 else :
-                    if os.path.isfile(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sequencesOrder[0])) :
-                        sprite1 = np.array(Image.open(baseLoc+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sequencesOrder[0])))
+                    if os.path.isfile(baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sequencesOrder[0])) :
+                        sprite1 = np.array(Image.open(baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sequencesOrder[0])))
         #                 print "loading", 0
                         hasLoaded = True
                     else :
                         sprite1 = getPoissonBlended(bgLoc,
                                                     "/".join(semanticSequences[seq1Idx][DICT_MASK_LOCATION].split("/")[:-2])+"/frame-{0:05}.png".format(frame1Key+1),
                                                     semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame1Key+1), frame1Offset[::-1])
+                        Image.fromarray(sprite1.astype(np.uint8)).save(baseLocBlended+"blended/frame-{0:05}-".format(frame1Key) + "{0:02}.png".format(sIdx))
             else :
                 sprite1 = np.array(Image.open(semanticSequences[seq1Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame1Key+1)))
 
@@ -800,14 +832,15 @@ for iterNum, f in enumerate(arange(minFrames)[0:]) : #[:maxFramesToRender]) :
                     if os.path.isfile(semanticSequences[seq2Idx][DICT_MASK_LOCATION]+"blended/frame-{0:05}.png".format(frame2Key+1)) :
                         sprite2 = np.array(Image.open(semanticSequences[seq2Idx][DICT_MASK_LOCATION]+"blended/frame-{0:05}.png".format(frame2Key+1)))
                     else :
-                        if os.path.isfile(baseLoc+"blended/frame-{0:05}-".format(frame2Key) + "{0:02}.png".format(sIdx)) :
-                            sprite2 = np.array(Image.open(baseLoc+"blended/frame-{0:05}-".format(frame2Key) + "{0:02}.png".format(sIdx)))
+                        if os.path.isfile(baseLocBlended+"blended/frame-{0:05}-".format(frame2Key) + "{0:02}.png".format(sIdx)) :
+                            sprite2 = np.array(Image.open(baseLocBlended+"blended/frame-{0:05}-".format(frame2Key) + "{0:02}.png".format(sIdx)))
         #                     print "loading", sIdx; sys.stdout.flush()
                             hasLoaded = True
                         else :
                             sprite2 = getPoissonBlended(bgLoc,
                                                         "/".join(semanticSequences[seq2Idx][DICT_MASK_LOCATION].split("/")[:-2])+"/frame-{0:05}.png".format(frame2Key+1),
                                                         semanticSequences[seq2Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame2Key+1), frame2Offset[::-1])
+                            Image.fromarray(sprite2.astype(np.uint8)).save(baseLocBlended+"blended/frame-{0:05}-".format(frame2Key) + "{0:02}.png".format(sIdx))
                 else :
                     sprite2 = np.array(Image.open(semanticSequences[seq2Idx][DICT_MASK_LOCATION]+"frame-{0:05}.png".format(frame2Key+1)))
 
@@ -897,4 +930,10 @@ for iterNum, f in enumerate(arange(minFrames)[0:]) : #[:maxFramesToRender]) :
     sys.stdout.flush()
 print 
 print "done"
+
+# <codecell>
+
+gwv.showCustomGraph(np.load("/media/ilisescu/Data1/PhD/data/toy_quick/overlap_normalization_distMat-toy_quick.npy"))
+gwv.showCustomGraph(np.load("/media/ilisescu/Data1/PhD/data/toy_quick/transition_costs_no_normalization-toy_quick.npy"))
+gwv.showCustomGraph(np.load("/media/ilisescu/Data1/PhD/data/toy/transition_costs_no_normalization_toy1.npy"))
 

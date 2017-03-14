@@ -205,7 +205,6 @@ class ImageLabel(QtGui.QLabel) :
                               QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
 
                 painter.drawPoint(QtCore.QPointF(currentPosition[0], currentPosition[1]))
-                        
 
 # <codecell>
 
@@ -299,8 +298,8 @@ class Window(QtGui.QWidget):
                     self.angularVelocity = np.max([0.0, self.angularVelocity - self.angularAcceleration*deltaTime])
             
             ####################### update direction based on angular velocity #######################
-#             angle = self.angularVelocity*np.pi/180.0*deltaTime*np.abs(self.velocity)/MAX_VELOCITY ## not sure how to get it to only turn if I'm moving but this works ish
-            angle = self.angularVelocity*np.pi/180.0*deltaTime ## not sure how to get it to only turn if I'm moving but this works ish
+            angle = self.angularVelocity*np.pi/180.0*deltaTime*np.abs(self.velocity)/MAX_VELOCITY ## not sure how to get it to only turn if I'm moving but this works ish
+#             angle = self.angularVelocity*np.pi/180.0*deltaTime ## not sure how to get it to only turn if I'm moving but this works ish
             rotMatrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
             newDirection = np.dot(self.desiredDirection.reshape([1, 2]), rotMatrix).flatten()
             directionAngleDistances = np.abs(np.arccos(np.dot(newDirection, self.originalTrajectoryDirections.T))*180.0/np.pi)
@@ -312,7 +311,7 @@ class Window(QtGui.QWidget):
             
             self.originalImageLabel.setCurrentControlVector(self.currentPosition, self.desiredDirection)
             
-            ####################### get sprite frame patch and render it offset based on current current position #######################
+            ####################### get sprite frame patch and render it offset based on current position #######################
             centerDistances = np.linalg.norm(self.originalTrajectory[:-1, :]-self.currentPosition, axis=1)
             frameIdxToUse = np.argmin(self.dirVsPosBalanceAlphaSpinBox.value()*centerDistances + (1.0-self.dirVsPosBalanceAlphaSpinBox.value())*directionAngleDistances)
             patchOffset = self.currentPosition - self.originalTrajectory[frameIdxToUse]
@@ -434,7 +433,7 @@ class Window(QtGui.QWidget):
         self.dirVsPosBalanceAlphaSpinBox = QtGui.QDoubleSpinBox()
         self.dirVsPosBalanceAlphaSpinBox.setRange(0, 1.0)
         self.dirVsPosBalanceAlphaSpinBox.setSingleStep(0.01)
-        self.dirVsPosBalanceAlphaSpinBox.setValue(0.0)
+        self.dirVsPosBalanceAlphaSpinBox.setValue(0.25)
         
         self.trajectorySmoothnessSpinBox = QtGui.QSpinBox()
         self.trajectorySmoothnessSpinBox.setRange(1, 200)
