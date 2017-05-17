@@ -1,0 +1,11 @@
+jupyter nbconvert --to script SemanticControlGUI.ipynb
+rsync -avhru --progress SemanticControlGUI.py RAbViS/
+jupyter nbconvert --to script SemanticsDefinitionTabGUI.ipynb
+rsync -avhru --progress SemanticsDefinitionTabGUI.py RAbViS/
+jupyter nbconvert --to script SemanticLoopingTabGUI.ipynb
+rsync -avhru --progress SemanticLoopingTabGUI.py RAbViS/
+jupyter nbconvert --to script BlendAndRenderSynthesisedSequence.ipynb
+rsync -avhru --progress BlendAndRenderSynthesisedSequence.py RAbViS/
+rsync -avhru --progress CMT.py RAbViS/
+rsync -avhru --progress CMT_* RAbViS/
+rsync -avhru --progress VideoTexturesUtils.py RAbViS/
